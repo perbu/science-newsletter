@@ -1,0 +1,30 @@
+{{if not .Results}}
+<p class="text-gray-500">No authors found. Try a different search.</p>
+{{else}}
+<div class="space-y-3">
+    {{range .Results}}
+    <div class="bg-white rounded-lg shadow p-4 flex items-center justify-between">
+        <div>
+            <p class="font-semibold text-gray-800">{{.DisplayName}}</p>
+            <p class="text-sm text-gray-500">
+                {{if .LastKnownInstitutions}}{{(index .LastKnownInstitutions 0).DisplayName}} &bull; {{end}}
+                h-index: {{.SummaryStats.HIndex}} &bull;
+                {{.WorksCount}} works &bull;
+                {{.CitedByCount}} citations
+            </p>
+        </div>
+        <form hx-post="/researchers" hx-target="#search-results" hx-swap="outerHTML">
+            <input type="hidden" name="openalex_id" value="{{.ID}}">
+            <input type="hidden" name="name" value="{{.DisplayName}}">
+            <input type="hidden" name="affiliation" value="{{if .LastKnownInstitutions}}{{(index .LastKnownInstitutions 0).DisplayName}}{{end}}">
+            <input type="hidden" name="h_index" value="{{.SummaryStats.HIndex}}">
+            <input type="hidden" name="works_count" value="{{.WorksCount}}">
+            <input type="hidden" name="cited_by_count" value="{{.CitedByCount}}">
+            <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">
+                Add
+            </button>
+        </form>
+    </div>
+    {{end}}
+</div>
+{{end}}

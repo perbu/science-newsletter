@@ -1,0 +1,36 @@
+{{define "content"}}
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold text-gray-800">Researchers</h1>
+    <a href="/researchers/new" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+        Add Researcher
+    </a>
+</div>
+
+{{if not .Researchers}}
+<p class="text-gray-500">No researchers added yet. Add one to get started.</p>
+{{else}}
+<div id="researcher-list" class="space-y-4">
+    {{range .Researchers}}
+    <div class="bg-white rounded-lg shadow p-5 flex items-center justify-between" id="researcher-{{.ID}}">
+        <div>
+            <a href="/researchers/{{.ID}}" class="text-lg font-semibold text-indigo-700 hover:underline">
+                {{.Name}}
+            </a>
+            <p class="text-sm text-gray-500">
+                {{.Affiliation}}
+                {{if .HIndex}}&bull; h-index: {{.HIndex}}{{end}}
+                &bull; {{.WorksCount}} works
+            </p>
+        </div>
+        <button
+            hx-delete="/researchers/{{.ID}}"
+            hx-target="#researcher-{{.ID}}"
+            hx-swap="outerHTML"
+            hx-confirm="Remove {{.Name}}?"
+            class="text-red-500 hover:text-red-700 text-sm"
+        >Remove</button>
+    </div>
+    {{end}}
+</div>
+{{end}}
+{{end}}

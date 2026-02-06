@@ -1,0 +1,28 @@
+{{if not .Results}}
+<p class="text-gray-500 text-sm">No topics found.</p>
+{{else}}
+<div class="space-y-2 max-h-64 overflow-y-auto">
+    {{range .Results}}
+    <div class="flex items-center justify-between bg-gray-50 rounded p-2 text-sm">
+        <div>
+            <span class="font-medium text-gray-800">{{.DisplayName}}</span>
+            <span class="text-gray-400 text-xs ml-2">{{.Subfield.DisplayName}} / {{.Field.DisplayName}}</span>
+        </div>
+        <form hx-post="/researchers/{{$.ResearcherID}}/topics"
+              hx-target="#topics-table"
+              hx-swap="outerHTML">
+            <input type="hidden" name="openalex_id" value="{{.ID}}">
+            <input type="hidden" name="name" value="{{.DisplayName}}">
+            <input type="hidden" name="subfield" value="{{.Subfield.DisplayName}}">
+            <input type="hidden" name="field" value="{{.Field.DisplayName}}">
+            <input type="hidden" name="domain" value="{{.Domain.DisplayName}}">
+            <input type="number" name="score" value="50" step="0.1" min="0" max="1000"
+                class="w-16 text-right font-mono text-xs border border-gray-200 rounded px-1 py-0.5 mr-2">
+            <button type="submit" class="text-green-600 hover:text-green-800 text-xs font-medium px-2 py-1 border border-green-300 rounded hover:bg-green-50">
+                Add
+            </button>
+        </form>
+    </div>
+    {{end}}
+</div>
+{{end}}

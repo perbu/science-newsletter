@@ -1,0 +1,180 @@
+{{define "content"}}
+<div class="mb-6">
+    <a href="/" class="text-indigo-600 hover:underline text-sm">&larr; Back to researchers</a>
+</div>
+
+<div class="bg-white rounded-lg shadow p-6 mb-6">
+    <h1 class="text-2xl font-bold text-gray-800">{{.Researcher.Name}}</h1>
+    <p class="text-gray-500">{{.Researcher.Affiliation}}</p>
+    <div class="flex gap-6 mt-3 text-sm text-gray-600">
+        <span>h-index: <strong>{{.Researcher.HIndex}}</strong></span>
+        <span>Works: <strong>{{.Researcher.WorksCount}}</strong></span>
+        <span>Citations: <strong>{{.Researcher.CitedByCount}}</strong></span>
+    </div>
+
+    <div class="mt-4 flex items-center gap-4" id="threshold-section">
+        <label class="text-sm text-gray-600">Relevancy threshold:</label>
+        <input type="range" min="0" max="1" step="0.05"
+            value="{{printf "%.2f" .Researcher.RelevancyThreshold}}"
+            hx-put="/researchers/{{.Researcher.ID}}/threshold"
+            hx-target="#threshold-value"
+            hx-trigger="change"
+            hx-include="this"
+            name="threshold"
+            class="w-48">
+        <span id="threshold-value" class="text-sm font-mono">{{printf "%.2f" .Researcher.RelevancyThreshold}}</span>
+    </div>
+
+    <div class="mt-4 flex gap-3">
+        <button
+            hx-post="/researchers/{{.Researcher.ID}}/sync"
+            hx-target="#sync-status"
+            hx-swap="innerHTML"
+            hx-indicator="#sync-spinner"
+            class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+            Sync Profile
+        </button>
+        <button
+            hx-post="/researchers/{{.Researcher.ID}}/fetch"
+            hx-target="#fetch-status"
+            hx-swap="innerHTML"
+            hx-indicator="#fetch-spinner"
+            class="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700">
+            Fetch Papers
+        </button>
+        <button
+            hx-post="/researchers/{{.Researcher.ID}}/analyze"
+            hx-target="#analyze-status"
+            hx-swap="innerHTML"
+            hx-indicator="#analyze-spinner"
+            class="bg-purple-600 text-white px-4 py-2 rounded text-sm hover:bg-purple-700">
+            Analyze &amp; Newsletter
+        </button>
+        <span id="sync-spinner" class="htmx-indicator text-sm text-gray-400">Syncing...</span>
+        <span id="fetch-spinner" class="htmx-indicator text-sm text-gray-400">Fetching...</span>
+        <span id="analyze-spinner" class="htmx-indicator text-sm text-gray-400">Analyzing...</span>
+    </div>
+    <div id="sync-status" class="mt-2 text-sm"></div>
+    <div id="fetch-status" class="mt-2 text-sm"></div>
+    <div id="analyze-status" class="mt-2 text-sm"></div>
+</div>
+
+<div class="bg-white rounded-lg shadow p-6 mb-6">
+    <h2 class="text-lg font-bold text-gray-800 mb-3">Research Topics</h2>
+    {{if .Topics}}
+    <div id="topics-table">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-left text-gray-500 border-b">
+                    <th class="py-2">Topic</th>
+                    <th class="py-2">Subfield</th>
+                    <th class="py-2">Field</th>
+                    <th class="py-2 text-center">Source</th>
+                    <th class="py-2 text-right">Score</th>
+                    <th class="py-2 text-right w-20"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Topics}}
+                <tr class="border-b border-gray-100" id="topic-row-{{.ID}}">
+                    <td class="py-2">{{.Name}}</td>
+                    <td class="py-2 text-gray-500">{{.Subfield}}</td>
+                    <td class="py-2 text-gray-500">{{.Field}}</td>
+                    <td class="py-2 text-center">
+                        {{if eq .Source "manual"}}
+                        <span class="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">manual</span>
+                        {{else}}
+                        <span class="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700">openalex</span>
+                        {{end}}
+                    </td>
+                    <td class="py-2 text-right">
+                        <input type="number" step="0.001" min="0" max="1000"
+                            value="{{printf "%.3f" .Score}}"
+                            name="score"
+                            hx-put="/researchers/{{$.Researcher.ID}}/topics/{{.ID}}/score"
+                            hx-trigger="change"
+                            hx-swap="none"
+                            class="w-20 text-right font-mono text-sm border border-gray-200 rounded px-1 py-0.5">
+                    </td>
+                    <td class="py-2 text-right">
+                        <button
+                            hx-delete="/researchers/{{$.Researcher.ID}}/topics/{{.ID}}"
+                            hx-target="#topic-row-{{.ID}}"
+                            hx-swap="outerHTML"
+                            hx-confirm="Remove topic '{{.Name}}'?"
+                            class="text-red-500 hover:text-red-700 text-xs px-2 py-1">
+                            Remove
+                        </button>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+    {{else}}
+    <p class="text-gray-500 text-sm" id="topics-table">No topics yet. Sync the profile or add topics manually.</p>
+    {{end}}
+
+    <div class="mt-4 border-t pt-4">
+        <h3 class="text-sm font-semibold text-gray-700 mb-2">Add Topic</h3>
+        <div class="flex gap-2 items-center">
+            <input type="text" name="query" placeholder="Search OpenAlex topics..."
+                hx-post="/researchers/{{.Researcher.ID}}/topics/search"
+                hx-trigger="input changed delay:300ms, keyup[key=='Enter']"
+                hx-target="#topic-search-results"
+                hx-indicator="#topic-search-spinner"
+                class="border border-gray-300 rounded px-3 py-2 text-sm flex-1">
+            <span id="topic-search-spinner" class="htmx-indicator text-sm text-gray-400">Searching...</span>
+        </div>
+        <div id="topic-search-results" class="mt-2"></div>
+    </div>
+</div>
+
+{{if .CoAuthors}}
+<div class="bg-white rounded-lg shadow p-6 mb-6">
+    <h2 class="text-lg font-bold text-gray-800 mb-3">Top Co-Authors</h2>
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="text-left text-gray-500 border-b">
+                <th class="py-2">Name</th>
+                <th class="py-2">Affiliation</th>
+                <th class="py-2 text-right">Collaborations</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .CoAuthors}}
+            <tr class="border-b border-gray-100">
+                <td class="py-2">{{.Name}}</td>
+                <td class="py-2 text-gray-500">{{.Affiliation}}</td>
+                <td class="py-2 text-right font-mono">{{.CollaborationCount}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+</div>
+{{end}}
+
+{{if .Newsletters}}
+<div class="bg-white rounded-lg shadow p-6">
+    <h2 class="text-lg font-bold text-gray-800 mb-3">Newsletter History</h2>
+    <div class="space-y-2">
+        {{range .Newsletters}}
+        <a href="/newsletters/{{.ID}}" class="block p-3 rounded bg-gray-50 hover:bg-gray-100">
+            <div class="flex justify-between items-center">
+                <span class="text-sm">
+                    {{.CreatedAt.Format "Jan 2, 2006 3:04 PM"}}
+                    &bull; {{.PapersIncluded}} papers
+                </span>
+                <span class="text-xs px-2 py-1 rounded
+                    {{if eq .Status "completed"}}bg-green-100 text-green-700
+                    {{else if eq .Status "failed"}}bg-red-100 text-red-700
+                    {{else}}bg-yellow-100 text-yellow-700{{end}}">
+                    {{.Status}}
+                </span>
+            </div>
+        </a>
+        {{end}}
+    </div>
+</div>
+{{end}}
+{{end}}
