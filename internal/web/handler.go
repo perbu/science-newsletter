@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -468,6 +469,284 @@ func (h *Handler) AddTopic(w http.ResponseWriter, r *http.Request) {
 	slog.Info("topic added", "researcher_id", researcherID, "name", name, "openalex_id", openalexID)
 	// Return updated topic list
 	topics, _ := h.queries.ListTopicsByResearcher(r.Context(), researcherID)
+	h.renderFragment(w, "topics_table.html.tmpl", map[string]any{
+		"Topics":     topics,
+		"Researcher": map[string]any{"ID": researcherID},
+	})
+}
+
+func (h *Handler) UpdateResearchInterests(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	interests := r.FormValue("research_interests")
+	if err := h.queries.UpdateResearcherInterests(r.Context(), db.UpdateResearcherInterestsParams{
+		ResearchInterests: interests,
+		ID:                id,
+	}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	slog.Info("research interests updated", "researcher_id", id, "length", len(interests))
+	fmt.Fprint(w, `<span class="text-green-600">Interests saved.</span>`)
+}
+
+func (h *Handler) MirrorTopics(w http.ResponseWriter, r *http.Request) {
+	count, err := h.syncer.MirrorTopics(r.Context())
+	if err != nil {
+		slog.Error("topic mirror failed", "err", err)
+		fmt.Fprintf(w, `<span class="text-red-600">Mirror failed: %s</span>`, err)
+		return
+	}
+	slog.Info("topic mirror complete", "count", count)
+	fmt.Fprintf(w, `<span class="text-green-600">Mirrored %d topics from OpenAlex.</span>`, count)
+}
+
+type SubfieldItem struct {
+	SubfieldID   string
+	SubfieldName string
+	Selected     bool
+}
+
+type FieldItem struct {
+	FieldID   string
+	FieldName string
+	Selected  bool
+	Subfields []SubfieldItem
+}
+
+type DomainGroup struct {
+	DomainID   string
+	DomainName string
+	Fields     []FieldItem
+}
+
+func (h *Handler) ListFields(w http.ResponseWriter, r *http.Request) {
+	researcherID, err := parseID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	ctx := r.Context()
+
+	fields, err := h.queries.ListDistinctFields(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	selections, err := h.queries.ListFieldSelectionsByResearcher(ctx, researcherID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	selectedSet := make(map[string]bool)
+	for _, s := range selections {
+		selectedSet[s.Level+":"+s.OpenalexID] = true
+	}
+
+	domainMap := make(map[string]*DomainGroup)
+	var domainOrder []string
+	for _, f := range fields {
+		dg, ok := domainMap[f.DomainID]
+		if !ok {
+			dg = &DomainGroup{DomainID: f.DomainID, DomainName: f.DomainName}
+			domainMap[f.DomainID] = dg
+			domainOrder = append(domainOrder, f.DomainID)
+		}
+
+		fieldSelected := selectedSet["field:"+f.FieldID]
+
+		subfields, _ := h.queries.ListDistinctSubfieldsByField(ctx, f.FieldID)
+		var sfItems []SubfieldItem
+		for _, sf := range subfields {
+			sfItems = append(sfItems, SubfieldItem{
+				SubfieldID:   sf.SubfieldID,
+				SubfieldName: sf.SubfieldName,
+				Selected:     selectedSet["subfield:"+sf.SubfieldID],
+			})
+		}
+
+		dg.Fields = append(dg.Fields, FieldItem{
+			FieldID:   f.FieldID,
+			FieldName: f.FieldName,
+			Selected:  fieldSelected,
+			Subfields: sfItems,
+		})
+	}
+
+	var domains []DomainGroup
+	for _, did := range domainOrder {
+		domains = append(domains, *domainMap[did])
+	}
+
+	topicCount, _ := h.queries.CountOpenAlexTopics(ctx)
+
+	h.renderFragment(w, "field_selection.html.tmpl", map[string]any{
+		"ResearcherID": researcherID,
+		"Domains":      domains,
+		"Selections":   selections,
+		"TopicCount":   topicCount,
+	})
+}
+
+func (h *Handler) ToggleFieldSelection(w http.ResponseWriter, r *http.Request) {
+	researcherID, err := parseID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	action := r.FormValue("action") // "add" or "remove"
+	level := r.FormValue("level")   // "field" or "subfield"
+	openalexID := r.FormValue("openalex_id")
+	displayName := r.FormValue("display_name")
+
+	ctx := r.Context()
+
+	if action == "remove" {
+		err = h.queries.DeleteFieldSelection(ctx, db.DeleteFieldSelectionParams{
+			ResearcherID: researcherID,
+			Level:        level,
+			OpenalexID:   openalexID,
+		})
+	} else {
+		err = h.queries.UpsertFieldSelection(ctx, db.UpsertFieldSelectionParams{
+			ResearcherID: researcherID,
+			Level:        level,
+			OpenalexID:   openalexID,
+			DisplayName:  displayName,
+		})
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("field selection toggled", "researcher_id", researcherID, "action", action, "level", level, "id", openalexID)
+
+	// Re-render the field selection panel
+	h.ListFields(w, r)
+}
+
+func (h *Handler) MapTopicsLLM(w http.ResponseWriter, r *http.Request) {
+	researcherID, err := parseID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	researcher, err := h.queries.GetResearcher(ctx, researcherID)
+	if err != nil {
+		http.Error(w, "Researcher not found", http.StatusNotFound)
+		return
+	}
+
+	if researcher.ResearchInterests == "" {
+		fmt.Fprint(w, `<span class="text-red-600">Please set research interests first.</span>`)
+		return
+	}
+
+	selections, err := h.queries.ListFieldSelectionsByResearcher(ctx, researcherID)
+	if err != nil || len(selections) == 0 {
+		fmt.Fprint(w, `<span class="text-red-600">Please select at least one field or subfield first.</span>`)
+		return
+	}
+
+	// Collect subfield IDs from selections
+	subfieldIDs := make(map[string]bool)
+	for _, s := range selections {
+		if s.Level == "subfield" {
+			subfieldIDs[s.OpenalexID] = true
+		} else if s.Level == "field" {
+			sfs, _ := h.queries.ListDistinctSubfieldsByField(ctx, s.OpenalexID)
+			for _, sf := range sfs {
+				subfieldIDs[sf.SubfieldID] = true
+			}
+		}
+	}
+
+	// Load topics from selected subfields
+	var topicsForMapping []agent.TopicForMapping
+	for sfID := range subfieldIDs {
+		rows, err := h.queries.ListTopicsBySubfield(ctx, sfID)
+		if err != nil {
+			continue
+		}
+		for _, row := range rows {
+			var keywords []string
+			_ = json.Unmarshal([]byte(row.Keywords), &keywords)
+			topicsForMapping = append(topicsForMapping, agent.TopicForMapping{
+				ID:          row.OpenalexID,
+				Name:        row.DisplayName,
+				Description: row.Description,
+				Keywords:    keywords,
+			})
+		}
+	}
+
+	if len(topicsForMapping) == 0 {
+		fmt.Fprint(w, `<span class="text-red-600">No topics found in selected fields. Try refreshing the topic database first.</span>`)
+		return
+	}
+
+	// Fetch recent publication abstracts
+	pubs, _ := h.queries.ListPublicationsByResearcher(ctx, db.ListPublicationsByResearcherParams{
+		ResearcherID: researcherID,
+		Limit:        5,
+	})
+	var abstracts []string
+	for _, pub := range pubs {
+		work, err := h.client.GetWork(ctx, pub.OpenalexID)
+		if err != nil {
+			continue
+		}
+		abstract := work.AbstractText()
+		if abstract != "" {
+			abstracts = append(abstracts, abstract)
+		}
+	}
+
+	// Call LLM
+	mappings, err := h.enricher.MapTopics(ctx, researcher.ResearchInterests, abstracts, topicsForMapping)
+	if err != nil {
+		slog.Error("LLM topic mapping failed", "researcher_id", researcherID, "err", err)
+		fmt.Fprintf(w, `<span class="text-red-600">Topic mapping failed: %s</span>`, err)
+		return
+	}
+
+	// Delete old LLM topics and upsert new ones
+	_ = h.queries.DeleteLLMTopicsByResearcher(ctx, researcherID)
+
+	for _, m := range mappings {
+		// Look up full topic metadata from openalex_topics table
+		oaTopic, err := h.queries.GetOpenAlexTopicByOpenAlexID(ctx, m.OpenAlexID)
+		if err != nil {
+			slog.Warn("mapped topic not found in mirror", "openalex_id", m.OpenAlexID)
+			continue
+		}
+
+		score := float64(m.Score) / 100.0
+		_ = h.queries.UpsertTopic(ctx, db.UpsertTopicParams{
+			ResearcherID: researcherID,
+			OpenalexID:   m.OpenAlexID,
+			Name:         oaTopic.DisplayName,
+			Subfield:     oaTopic.SubfieldName,
+			Field:        oaTopic.FieldName,
+			Domain:       oaTopic.DomainName,
+			Score:        score,
+			Source:       "llm",
+		})
+	}
+
+	slog.Info("LLM topic mapping saved", "researcher_id", researcherID, "topics", len(mappings))
+
+	// Re-render topics table
+	topics, _ := h.queries.ListTopicsByResearcher(ctx, researcherID)
 	h.renderFragment(w, "topics_table.html.tmpl", map[string]any{
 		"Topics":     topics,
 		"Researcher": map[string]any{"ID": researcherID},

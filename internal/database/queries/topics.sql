@@ -34,3 +34,6 @@ UPDATE topics SET score = ?, source = 'manual' WHERE id = ? AND researcher_id = 
 
 -- name: GetTopic :one
 SELECT * FROM topics WHERE id = ?;
+
+-- name: DeleteLLMTopicsByResearcher :exec
+DELETE FROM topics WHERE researcher_id = ? AND source = 'llm';

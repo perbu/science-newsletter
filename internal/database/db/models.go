@@ -46,6 +46,22 @@ type NewsletterRun struct {
 	CompletedAt    sql.NullTime
 }
 
+type OpenalexTopic struct {
+	ID           int64
+	OpenalexID   string
+	DisplayName  string
+	Description  string
+	Keywords     string
+	SubfieldID   string
+	SubfieldName string
+	FieldID      string
+	FieldName    string
+	DomainID     string
+	DomainName   string
+	WorksCount   int64
+	UpdatedAt    time.Time
+}
+
 type Publication struct {
 	ID              int64
 	OpenalexID      string
@@ -68,6 +84,15 @@ type Researcher struct {
 	RelevancyThreshold float64
 	LastSyncedAt       sql.NullTime
 	CreatedAt          time.Time
+	ResearchInterests  string
+}
+
+type ResearcherFieldSelection struct {
+	ID           int64
+	ResearcherID int64
+	Level        string
+	OpenalexID   string
+	DisplayName  string
 }
 
 type ScannedWork struct {

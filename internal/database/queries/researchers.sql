@@ -20,5 +20,8 @@ WHERE id = ?;
 -- name: UpdateResearcherThreshold :exec
 UPDATE researchers SET relevancy_threshold = ? WHERE id = ?;
 
+-- name: UpdateResearcherInterests :exec
+UPDATE researchers SET research_interests = ? WHERE id = ?;
+
 -- name: DeleteResearcher :exec
 DELETE FROM researchers WHERE id = ?;

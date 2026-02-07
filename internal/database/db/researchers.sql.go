@@ -12,7 +12,7 @@ import (
 const createResearcher = `-- name: CreateResearcher :one
 INSERT INTO researchers (openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold)
 VALUES (?, ?, ?, ?, ?, ?, ?)
-RETURNING id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at
+RETURNING id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at, research_interests
 `
 
 type CreateResearcherParams struct {
@@ -47,6 +47,7 @@ func (q *Queries) CreateResearcher(ctx context.Context, arg CreateResearcherPara
 		&i.RelevancyThreshold,
 		&i.LastSyncedAt,
 		&i.CreatedAt,
+		&i.ResearchInterests,
 	)
 	return i, err
 }
@@ -61,7 +62,7 @@ func (q *Queries) DeleteResearcher(ctx context.Context, id int64) error {
 }
 
 const getResearcher = `-- name: GetResearcher :one
-SELECT id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at FROM researchers WHERE id = ? LIMIT 1
+SELECT id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at, research_interests FROM researchers WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetResearcher(ctx context.Context, id int64) (Researcher, error) {
@@ -78,12 +79,13 @@ func (q *Queries) GetResearcher(ctx context.Context, id int64) (Researcher, erro
 		&i.RelevancyThreshold,
 		&i.LastSyncedAt,
 		&i.CreatedAt,
+		&i.ResearchInterests,
 	)
 	return i, err
 }
 
 const getResearcherByOpenAlexID = `-- name: GetResearcherByOpenAlexID :one
-SELECT id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at FROM researchers WHERE openalex_id = ? LIMIT 1
+SELECT id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at, research_interests FROM researchers WHERE openalex_id = ? LIMIT 1
 `
 
 func (q *Queries) GetResearcherByOpenAlexID(ctx context.Context, openalexID string) (Researcher, error) {
@@ -100,12 +102,13 @@ func (q *Queries) GetResearcherByOpenAlexID(ctx context.Context, openalexID stri
 		&i.RelevancyThreshold,
 		&i.LastSyncedAt,
 		&i.CreatedAt,
+		&i.ResearchInterests,
 	)
 	return i, err
 }
 
 const listResearchers = `-- name: ListResearchers :many
-SELECT id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at FROM researchers ORDER BY name
+SELECT id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at, research_interests FROM researchers ORDER BY name
 `
 
 func (q *Queries) ListResearchers(ctx context.Context) ([]Researcher, error) {
@@ -128,6 +131,7 @@ func (q *Queries) ListResearchers(ctx context.Context) ([]Researcher, error) {
 			&i.RelevancyThreshold,
 			&i.LastSyncedAt,
 			&i.CreatedAt,
+			&i.ResearchInterests,
 		); err != nil {
 			return nil, err
 		}
@@ -140,6 +144,20 @@ func (q *Queries) ListResearchers(ctx context.Context) ([]Researcher, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateResearcherInterests = `-- name: UpdateResearcherInterests :exec
+UPDATE researchers SET research_interests = ? WHERE id = ?
+`
+
+type UpdateResearcherInterestsParams struct {
+	ResearchInterests string
+	ID                int64
+}
+
+func (q *Queries) UpdateResearcherInterests(ctx context.Context, arg UpdateResearcherInterestsParams) error {
+	_, err := q.db.ExecContext(ctx, updateResearcherInterests, arg.ResearchInterests, arg.ID)
+	return err
 }
 
 const updateResearcherStats = `-- name: UpdateResearcherStats :exec

@@ -1,0 +1,51 @@
+{{if not .Domains}}
+<p class="text-sm text-gray-500">No topics in database. Click "Refresh Topic Database" on the main page first.</p>
+{{else}}
+<div class="text-xs text-gray-400 mb-2">{{.TopicCount}} topics in database</div>
+<div class="space-y-3 max-h-96 overflow-y-auto">
+    {{range .Domains}}
+    <details class="border border-gray-200 rounded">
+        <summary class="px-3 py-2 bg-gray-50 cursor-pointer text-sm font-semibold text-gray-700">
+            {{.DomainName}}
+        </summary>
+        <div class="px-3 py-2 space-y-2">
+            {{$researcherID := $.ResearcherID}}
+            {{range .Fields}}
+            <details class="ml-2">
+                <summary class="cursor-pointer text-sm text-gray-600 flex items-center gap-2">
+                    <label class="flex items-center gap-1" onclick="event.stopPropagation()">
+                        <input type="checkbox"
+                            {{if .Selected}}checked{{end}}
+                            hx-post="/researchers/{{$researcherID}}/field-selection"
+                            hx-target="#field-selection-panel"
+                            hx-swap="innerHTML"
+                            hx-vals='{"level":"field","openalex_id":"{{.FieldID}}","display_name":"{{.FieldName}}","action":"{{if .Selected}}remove{{else}}add{{end}}"}'
+                            class="rounded border-gray-300">
+                    </label>
+                    <span>{{.FieldName}}</span>
+                </summary>
+                <div class="ml-6 mt-1 space-y-1">
+                    {{range .Subfields}}
+                    <label class="flex items-center gap-2 text-xs text-gray-500">
+                        <input type="checkbox"
+                            {{if .Selected}}checked{{end}}
+                            hx-post="/researchers/{{$researcherID}}/field-selection"
+                            hx-target="#field-selection-panel"
+                            hx-swap="innerHTML"
+                            hx-vals='{"level":"subfield","openalex_id":"{{.SubfieldID}}","display_name":"{{.SubfieldName}}","action":"{{if .Selected}}remove{{else}}add{{end}}"}'
+                            class="rounded border-gray-300">
+                        {{.SubfieldName}}
+                    </label>
+                    {{end}}
+                </div>
+            </details>
+            {{end}}
+        </div>
+    </details>
+    {{end}}
+</div>
+{{$selCount := len .Selections}}
+{{if gt $selCount 0}}
+<div class="mt-2 text-xs text-gray-500">{{$selCount}} field/subfield(s) selected</div>
+{{end}}
+{{end}}

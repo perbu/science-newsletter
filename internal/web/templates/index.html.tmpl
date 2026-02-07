@@ -1,9 +1,24 @@
 {{define "content"}}
 <div class="flex items-center justify-between mb-6">
     <h1 class="text-2xl font-bold text-gray-800">Researchers</h1>
-    <a href="/researchers/new" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
-        Add Researcher
-    </a>
+    <div class="flex gap-3">
+        <button
+            hx-post="/admin/mirror-topics"
+            hx-target="#mirror-status"
+            hx-swap="innerHTML"
+            hx-indicator="#mirror-spinner"
+            hx-confirm="This will download ~4,500 topics from OpenAlex. Continue?"
+            class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 text-sm">
+            Refresh Topic Database
+        </button>
+        <a href="/researchers/new" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+            Add Researcher
+        </a>
+    </div>
+</div>
+<div class="mb-4 flex items-center gap-2">
+    <span id="mirror-spinner" class="htmx-indicator text-sm text-gray-400">Downloading topics...</span>
+    <span id="mirror-status" class="text-sm"></span>
 </div>
 
 {{if not .Researchers}}

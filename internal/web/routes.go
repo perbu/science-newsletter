@@ -18,4 +18,9 @@ func SetupRoutes(mux *http.ServeMux, h *Handler) {
 	mux.HandleFunc("DELETE /researchers/{id}/topics/{topicId}", h.DeleteTopic)
 	mux.HandleFunc("PUT /researchers/{id}/topics/{topicId}/score", h.UpdateTopicScore)
 	mux.HandleFunc("GET /newsletters/{id}", h.ViewNewsletter)
+	mux.HandleFunc("POST /admin/mirror-topics", h.MirrorTopics)
+	mux.HandleFunc("PUT /researchers/{id}/interests", h.UpdateResearchInterests)
+	mux.HandleFunc("GET /researchers/{id}/fields", h.ListFields)
+	mux.HandleFunc("POST /researchers/{id}/field-selection", h.ToggleFieldSelection)
+	mux.HandleFunc("POST /researchers/{id}/map-topics", h.MapTopicsLLM)
 }

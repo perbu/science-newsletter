@@ -9,6 +9,15 @@ import (
 	"context"
 )
 
+const deleteLLMTopicsByResearcher = `-- name: DeleteLLMTopicsByResearcher :exec
+DELETE FROM topics WHERE researcher_id = ? AND source = 'llm'
+`
+
+func (q *Queries) DeleteLLMTopicsByResearcher(ctx context.Context, researcherID int64) error {
+	_, err := q.db.ExecContext(ctx, deleteLLMTopicsByResearcher, researcherID)
+	return err
+}
+
 const deleteOpenAlexTopicsByResearcher = `-- name: DeleteOpenAlexTopicsByResearcher :exec
 DELETE FROM topics WHERE researcher_id = ? AND source = 'openalex'
 `

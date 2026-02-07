@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -267,6 +268,34 @@ func (c *Client) GetSources(ctx context.Context, sourceIDs []string) ([]SourceDe
 		cursor = resp.Meta.NextCursor
 	}
 	slog.Info("fetched sources", "total", len(all), "pages", page, "duration", time.Since(start))
+	return all, nil
+}
+
+// ListAllTopics fetches all topics from the /topics endpoint using page-based pagination.
+func (c *Client) ListAllTopics(ctx context.Context) ([]TopicFull, error) {
+	slog.Info("fetching all OpenAlex topics")
+	start := time.Now()
+	var all []TopicFull
+	page := 1
+
+	for {
+		params := url.Values{
+			"per_page": {"200"},
+			"page":     {strconv.Itoa(page)},
+		}
+		var resp TopicsFullResponse
+		if err := c.do(ctx, "/topics", params, &resp); err != nil {
+			return nil, err
+		}
+		all = append(all, resp.Results...)
+		slog.Debug("topics page fetched", "page", page, "page_results", len(resp.Results), "total_so_far", len(all))
+
+		if len(resp.Results) == 0 {
+			break
+		}
+		page++
+	}
+	slog.Info("fetched all topics", "total", len(all), "pages", page-1, "duration", time.Since(start))
 	return all, nil
 }
 

@@ -158,6 +158,24 @@ type Meta struct {
 	NextCursor string `json:"next_cursor"`
 }
 
+// TopicFull represents a complete topic record from the /topics endpoint.
+type TopicFull struct {
+	ID          string   `json:"id"`
+	DisplayName string   `json:"display_name"`
+	Description string   `json:"description"`
+	Keywords    []string `json:"keywords"`
+	Subfield    Subfield `json:"subfield"`
+	Field       Field    `json:"field"`
+	Domain      Domain   `json:"domain"`
+	WorksCount  int      `json:"works_count"`
+}
+
+// TopicsFullResponse wraps paginated /topics results with full detail.
+type TopicsFullResponse struct {
+	Results []TopicFull `json:"results"`
+	Meta    Meta        `json:"meta"`
+}
+
 // TopicSearchResult represents a topic returned from the /topics search endpoint.
 type TopicSearchResult struct {
 	ID          string   `json:"id"`

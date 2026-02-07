@@ -96,6 +96,18 @@ Re-fetching the same week refreshes the cached data. Re-analyzing re-scores and 
 Uses `log/slog` throughout. Set `LOG_LEVEL=debug` in `.env` for verbose output including per-paper scoring, OpenAlex
 request timing, and Gemini token usage. Default level is `info`.
 
+## Primary User's Research Interests
+
+The primary user researches **teaching quality** and **instructional quality**, which don't map neatly to existing
+OpenAlex topics. Key sub-areas:
+
+- **Classroom management**
+- **Cognitive activation**
+- **Supportive climate / supportive teaching**
+
+This is a core challenge for topic mapping: her research interests span multiple OpenAlex topics and don't have direct
+one-to-one representations in the taxonomy.
+
 ## Architecture Decisions
 
 - **genai directly, not ADK**: The Google ADK framework is designed for conversational agent servers with
