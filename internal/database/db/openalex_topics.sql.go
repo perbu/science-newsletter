@@ -164,6 +164,49 @@ func (q *Queries) ListTopicsBySubfield(ctx context.Context, subfieldID string) (
 	return items, nil
 }
 
+const searchSubfieldsByName = `-- name: SearchSubfieldsByName :many
+SELECT DISTINCT subfield_id, subfield_name, field_name, domain_name
+FROM openalex_topics
+WHERE subfield_name LIKE ?
+ORDER BY subfield_name
+LIMIT 20
+`
+
+type SearchSubfieldsByNameRow struct {
+	SubfieldID   string
+	SubfieldName string
+	FieldName    string
+	DomainName   string
+}
+
+func (q *Queries) SearchSubfieldsByName(ctx context.Context, subfieldName string) ([]SearchSubfieldsByNameRow, error) {
+	rows, err := q.db.QueryContext(ctx, searchSubfieldsByName, subfieldName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchSubfieldsByNameRow
+	for rows.Next() {
+		var i SearchSubfieldsByNameRow
+		if err := rows.Scan(
+			&i.SubfieldID,
+			&i.SubfieldName,
+			&i.FieldName,
+			&i.DomainName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertOpenAlexTopic = `-- name: UpsertOpenAlexTopic :exec
 INSERT INTO openalex_topics (openalex_id, display_name, description, keywords, subfield_id, subfield_name, field_id, field_name, domain_id, domain_name, works_count, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)

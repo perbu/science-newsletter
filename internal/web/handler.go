@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"embed"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -632,124 +631,52 @@ func (h *Handler) ToggleFieldSelection(w http.ResponseWriter, r *http.Request) {
 	h.ListFields(w, r)
 }
 
-func (h *Handler) MapTopicsLLM(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) SearchSubfields(w http.ResponseWriter, r *http.Request) {
 	researcherID, err := parseID(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	query := r.FormValue("query")
+	if len(query) < 2 {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 
-	ctx := r.Context()
-	researcher, err := h.queries.GetResearcher(ctx, researcherID)
+	results, err := h.queries.SearchSubfieldsByName(r.Context(), "%"+query+"%")
 	if err != nil {
-		http.Error(w, "Researcher not found", http.StatusNotFound)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	if researcher.ResearchInterests == "" {
-		fmt.Fprint(w, `<span class="text-red-600">Please set research interests first.</span>`)
-		return
-	}
-
-	selections, err := h.queries.ListFieldSelectionsByResearcher(ctx, researcherID)
-	if err != nil || len(selections) == 0 {
-		fmt.Fprint(w, `<span class="text-red-600">Please select at least one field or subfield first.</span>`)
-		return
-	}
-
-	// Collect subfield IDs from selections
-	subfieldIDs := make(map[string]bool)
+	// Check which are already selected
+	selections, _ := h.queries.ListFieldSelectionsByResearcher(r.Context(), researcherID)
+	selectedSet := make(map[string]bool)
 	for _, s := range selections {
-		if s.Level == "subfield" {
-			subfieldIDs[s.OpenalexID] = true
-		} else if s.Level == "field" {
-			sfs, _ := h.queries.ListDistinctSubfieldsByField(ctx, s.OpenalexID)
-			for _, sf := range sfs {
-				subfieldIDs[sf.SubfieldID] = true
-			}
-		}
+		selectedSet[s.Level+":"+s.OpenalexID] = true
 	}
 
-	// Load topics from selected subfields
-	var topicsForMapping []agent.TopicForMapping
-	for sfID := range subfieldIDs {
-		rows, err := h.queries.ListTopicsBySubfield(ctx, sfID)
-		if err != nil {
-			continue
-		}
-		for _, row := range rows {
-			var keywords []string
-			_ = json.Unmarshal([]byte(row.Keywords), &keywords)
-			topicsForMapping = append(topicsForMapping, agent.TopicForMapping{
-				ID:          row.OpenalexID,
-				Name:        row.DisplayName,
-				Description: row.Description,
-				Keywords:    keywords,
-			})
-		}
+	type result struct {
+		SubfieldID   string
+		SubfieldName string
+		FieldName    string
+		DomainName   string
+		Selected     bool
 	}
-
-	if len(topicsForMapping) == 0 {
-		fmt.Fprint(w, `<span class="text-red-600">No topics found in selected fields. Try refreshing the topic database first.</span>`)
-		return
-	}
-
-	// Fetch recent publication abstracts
-	pubs, _ := h.queries.ListPublicationsByResearcher(ctx, db.ListPublicationsByResearcherParams{
-		ResearcherID: researcherID,
-		Limit:        5,
-	})
-	var abstracts []string
-	for _, pub := range pubs {
-		work, err := h.client.GetWork(ctx, pub.OpenalexID)
-		if err != nil {
-			continue
-		}
-		abstract := work.AbstractText()
-		if abstract != "" {
-			abstracts = append(abstracts, abstract)
-		}
-	}
-
-	// Call LLM
-	mappings, err := h.enricher.MapTopics(ctx, researcher.ResearchInterests, abstracts, topicsForMapping)
-	if err != nil {
-		slog.Error("LLM topic mapping failed", "researcher_id", researcherID, "err", err)
-		fmt.Fprintf(w, `<span class="text-red-600">Topic mapping failed: %s</span>`, err)
-		return
-	}
-
-	// Delete old LLM topics and upsert new ones
-	_ = h.queries.DeleteLLMTopicsByResearcher(ctx, researcherID)
-
-	for _, m := range mappings {
-		// Look up full topic metadata from openalex_topics table
-		oaTopic, err := h.queries.GetOpenAlexTopicByOpenAlexID(ctx, m.OpenAlexID)
-		if err != nil {
-			slog.Warn("mapped topic not found in mirror", "openalex_id", m.OpenAlexID)
-			continue
-		}
-
-		score := float64(m.Score) / 100.0
-		_ = h.queries.UpsertTopic(ctx, db.UpsertTopicParams{
-			ResearcherID: researcherID,
-			OpenalexID:   m.OpenAlexID,
-			Name:         oaTopic.DisplayName,
-			Subfield:     oaTopic.SubfieldName,
-			Field:        oaTopic.FieldName,
-			Domain:       oaTopic.DomainName,
-			Score:        score,
-			Source:       "llm",
+	var items []result
+	for _, r := range results {
+		items = append(items, result{
+			SubfieldID:   r.SubfieldID,
+			SubfieldName: r.SubfieldName,
+			FieldName:    r.FieldName,
+			DomainName:   r.DomainName,
+			Selected:     selectedSet["subfield:"+r.SubfieldID],
 		})
 	}
 
-	slog.Info("LLM topic mapping saved", "researcher_id", researcherID, "topics", len(mappings))
-
-	// Re-render topics table
-	topics, _ := h.queries.ListTopicsByResearcher(ctx, researcherID)
-	h.renderFragment(w, "topics_table.html.tmpl", map[string]any{
-		"Topics":     topics,
-		"Researcher": map[string]any{"ID": researcherID},
+	h.renderFragment(w, "subfield_search_results.html.tmpl", map[string]any{
+		"Results":      items,
+		"ResearcherID": researcherID,
 	})
 }
 

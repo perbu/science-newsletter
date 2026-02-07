@@ -35,5 +35,12 @@ FROM openalex_topics
 WHERE subfield_id = ?
 ORDER BY works_count DESC;
 
+-- name: SearchSubfieldsByName :many
+SELECT DISTINCT subfield_id, subfield_name, field_name, domain_name
+FROM openalex_topics
+WHERE subfield_name LIKE ?
+ORDER BY subfield_name
+LIMIT 20;
+
 -- name: GetOpenAlexTopicByOpenAlexID :one
 SELECT * FROM openalex_topics WHERE openalex_id = ? LIMIT 1;

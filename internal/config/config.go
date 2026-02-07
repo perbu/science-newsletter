@@ -36,7 +36,6 @@ type GeminiConfig struct {
 type AgentConfig struct {
 	EnrichmentPrompt   string `yaml:"enrichment_prompt"`
 	CoauthorPrompt     string `yaml:"coauthor_prompt"`
-	TopicMappingPrompt string `yaml:"topic_mapping_prompt"`
 }
 
 type ScannerConfig struct {

@@ -223,6 +223,53 @@ func (c *Client) SearchRecentWorksByAuthors(ctx context.Context, authorIDs []str
 	return all, nil
 }
 
+// SearchRecentWorksBySubfields finds recent works matching given subfield IDs.
+// Uses the filter topics.subfield.id:SF1|SF2,from_publication_date:YYYY-MM-DD.
+func (c *Client) SearchRecentWorksBySubfields(ctx context.Context, subfieldIDs []string, since time.Time) ([]Work, error) {
+	if len(subfieldIDs) == 0 {
+		slog.Warn("SearchRecentWorksBySubfields called with no subfield IDs")
+		return nil, nil
+	}
+
+	sinceStr := since.Format("2006-01-02")
+	filter := fmt.Sprintf("topics.subfield.id:%s,from_publication_date:%s",
+		strings.Join(subfieldIDs, "|"), sinceStr)
+
+	slog.Info("searching recent works by subfields", "subfield_count", len(subfieldIDs), "since", sinceStr, "filter", filter)
+	start := time.Now()
+
+	var all []Work
+	cursor := "*"
+	page := 0
+
+	for {
+		page++
+		params := url.Values{
+			"filter":   {filter},
+			"per_page": {"200"},
+			"cursor":   {cursor},
+		}
+		var resp WorksResponse
+		if err := c.do(ctx, "/works", params, &resp); err != nil {
+			return nil, err
+		}
+		all = append(all, resp.Results...)
+		slog.Debug("subfield works page fetched",
+			"page", page,
+			"page_results", len(resp.Results),
+			"total_so_far", len(all),
+			"meta_count", resp.Meta.Count,
+		)
+
+		if resp.Meta.NextCursor == "" || len(resp.Results) == 0 {
+			break
+		}
+		cursor = resp.Meta.NextCursor
+	}
+	slog.Info("subfield works search complete", "total_works", len(all), "pages", page, "duration", time.Since(start))
+	return all, nil
+}
+
 // GetWork fetches a single work by OpenAlex ID.
 func (c *Client) GetWork(ctx context.Context, id string) (*Work, error) {
 	slog.Debug("fetching work", "id", id)

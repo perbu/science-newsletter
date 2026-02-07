@@ -44,6 +44,8 @@ func New(queries *db.Queries, client *openalex.Client, maxTopics, maxCoauthors, 
 }
 
 // FetchWorks fetches recent papers from OpenAlex for the current ISO week and caches them in the DB.
+// If the researcher has field/subfield selections, searches by subfield IDs.
+// Otherwise falls back to topic-based search.
 // Returns the number of works stored.
 func (s *Scanner) FetchWorks(ctx context.Context, researcherID int64) (int, error) {
 	researcher, err := s.queries.GetResearcher(ctx, researcherID)
@@ -51,43 +53,89 @@ func (s *Scanner) FetchWorks(ctx context.Context, researcherID int64) (int, erro
 		return 0, fmt.Errorf("get researcher: %w", err)
 	}
 
-	topics, err := s.queries.ListTopTopicsByResearcher(ctx, db.ListTopTopicsByResearcherParams{
-		ResearcherID: researcherID,
-		Limit:        int64(s.maxTopics),
-	})
-	if err != nil {
-		return 0, fmt.Errorf("list topics: %w", err)
-	}
-	if len(topics) == 0 {
-		return 0, fmt.Errorf("researcher %s has no topics, sync first", researcher.Name)
-	}
-
-	for _, t := range topics {
-		slog.Debug("search topic", "name", t.Name, "openalex_id", t.OpenalexID, "score", t.Score)
-	}
-
-	topicIDs := make([]string, len(topics))
-	for i, t := range topics {
-		topicIDs[i] = t.OpenalexID
-	}
-
 	weekStart := WeekStart(time.Now())
 	scanWeek := weekStart.Format("2006-01-02")
-
 	since := time.Now().AddDate(0, 0, -s.lookbackDays)
-	slog.Info("fetching works from OpenAlex",
-		"researcher", researcher.Name,
-		"topic_count", len(topicIDs),
-		"since", since.Format("2006-01-02"),
-		"scan_week", scanWeek,
-	)
 
-	works, err := s.client.SearchRecentWorks(ctx, topicIDs, since)
+	var works []openalex.Work
+
+	// Check for subfield selections first
+	selections, err := s.queries.ListFieldSelectionsByResearcher(ctx, researcherID)
 	if err != nil {
-		return 0, fmt.Errorf("search recent works: %w", err)
+		return 0, fmt.Errorf("list field selections: %w", err)
 	}
 
-	slog.Info("topic search returned works", "raw_count", len(works))
+	if len(selections) > 0 {
+		// Resolve selections to subfield IDs
+		subfieldIDSet := make(map[string]bool)
+		for _, sel := range selections {
+			switch sel.Level {
+			case "subfield":
+				subfieldIDSet[sel.OpenalexID] = true
+			case "field":
+				sfs, err := s.queries.ListDistinctSubfieldsByField(ctx, sel.OpenalexID)
+				if err != nil {
+					slog.Warn("failed to expand field to subfields", "field_id", sel.OpenalexID, "err", err)
+					continue
+				}
+				for _, sf := range sfs {
+					subfieldIDSet[sf.SubfieldID] = true
+				}
+			}
+		}
+
+		subfieldIDs := make([]string, 0, len(subfieldIDSet))
+		for id := range subfieldIDSet {
+			subfieldIDs = append(subfieldIDs, id)
+		}
+
+		slog.Info("fetching works by subfield selections",
+			"researcher", researcher.Name,
+			"subfield_count", len(subfieldIDs),
+			"since", since.Format("2006-01-02"),
+			"scan_week", scanWeek,
+		)
+
+		works, err = s.client.SearchRecentWorksBySubfields(ctx, subfieldIDs, since)
+		if err != nil {
+			return 0, fmt.Errorf("search recent works by subfields: %w", err)
+		}
+		slog.Info("subfield search returned works", "raw_count", len(works))
+	} else {
+		// Fall back to topic-based search
+		topics, err := s.queries.ListTopTopicsByResearcher(ctx, db.ListTopTopicsByResearcherParams{
+			ResearcherID: researcherID,
+			Limit:        int64(s.maxTopics),
+		})
+		if err != nil {
+			return 0, fmt.Errorf("list topics: %w", err)
+		}
+		if len(topics) == 0 {
+			return 0, fmt.Errorf("researcher %s has no topics and no field selections, sync first", researcher.Name)
+		}
+
+		for _, t := range topics {
+			slog.Debug("search topic", "name", t.Name, "openalex_id", t.OpenalexID, "score", t.Score)
+		}
+
+		topicIDs := make([]string, len(topics))
+		for i, t := range topics {
+			topicIDs[i] = t.OpenalexID
+		}
+
+		slog.Info("fetching works by topics (fallback)",
+			"researcher", researcher.Name,
+			"topic_count", len(topicIDs),
+			"since", since.Format("2006-01-02"),
+			"scan_week", scanWeek,
+		)
+
+		works, err = s.client.SearchRecentWorks(ctx, topicIDs, since)
+		if err != nil {
+			return 0, fmt.Errorf("search recent works: %w", err)
+		}
+		slog.Info("topic search returned works", "raw_count", len(works))
+	}
 
 	// Co-author search
 	if s.maxCoauthors > 0 {

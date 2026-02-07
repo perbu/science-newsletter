@@ -61,7 +61,7 @@
 
 <div class="bg-white rounded-lg shadow p-6 mb-6">
     <h2 class="text-lg font-bold text-gray-800 mb-3">Research Interests</h2>
-    <p class="text-sm text-gray-500 mb-2">Describe the researcher's interests in free text. This is used by the AI topic mapper.</p>
+    <p class="text-sm text-gray-500 mb-2">Describe the researcher's interests in free text. Used for enrichment context.</p>
     <textarea name="research_interests" rows="4"
         class="w-full border border-gray-300 rounded px-3 py-2 text-sm"
         placeholder="e.g. Teaching quality, instructional quality, classroom management, cognitive activation, supportive climate..."
@@ -80,27 +80,29 @@
 </div>
 
 <div class="bg-white rounded-lg shadow p-6 mb-6">
-    <h2 class="text-lg font-bold text-gray-800 mb-3">AI Topic Mapping</h2>
-    <p class="text-sm text-gray-500 mb-3">Select fields/subfields to scope the topic search, then let AI map your interests to specific topics.</p>
+    <h2 class="text-lg font-bold text-gray-800 mb-3">Search Scope</h2>
+    <p class="text-sm text-gray-500 mb-3">Search for subfields to define which areas to fetch papers from. These are used directly when querying OpenAlex.</p>
 
-    <div id="field-selection-panel"
-        hx-get="/researchers/{{.Researcher.ID}}/fields"
-        hx-trigger="load"
-        hx-swap="innerHTML">
-        <span class="text-sm text-gray-400">Loading fields...</span>
+    <div class="mb-3">
+        <input type="text" name="query" placeholder="Search subfields (e.g. Education, Psychology, Linguistics)..."
+            hx-post="/researchers/{{.Researcher.ID}}/subfields/search"
+            hx-trigger="input changed delay:300ms, keyup[key=='Enter']"
+            hx-target="#subfield-search-results"
+            hx-indicator="#subfield-search-spinner"
+            class="border border-gray-300 rounded px-3 py-2 text-sm w-full">
+        <span id="subfield-search-spinner" class="htmx-indicator text-sm text-gray-400">Searching...</span>
+        <div id="subfield-search-results" class="mt-2"></div>
     </div>
 
-    <div class="mt-4 flex items-center gap-3">
-        <button
-            hx-post="/researchers/{{.Researcher.ID}}/map-topics"
-            hx-target="#topics-table"
-            hx-swap="outerHTML"
-            hx-indicator="#map-spinner"
-            class="bg-violet-600 text-white px-4 py-2 rounded text-sm hover:bg-violet-700">
-            Map Topics with AI
-        </button>
-        <span id="map-spinner" class="htmx-indicator text-sm text-gray-400">Mapping topics...</span>
-    </div>
+    <details class="border border-gray-200 rounded">
+        <summary class="px-3 py-2 bg-gray-50 cursor-pointer text-sm text-gray-500">Browse all fields &amp; subfields</summary>
+        <div class="p-3" id="field-selection-panel"
+            hx-get="/researchers/{{.Researcher.ID}}/fields"
+            hx-trigger="intersect once"
+            hx-swap="innerHTML">
+            <span class="text-sm text-gray-400">Loading fields...</span>
+        </div>
+    </details>
 </div>
 
 <div class="bg-white rounded-lg shadow p-6 mb-6">
