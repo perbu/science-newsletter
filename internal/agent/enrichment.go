@@ -57,11 +57,11 @@ func (e *Enricher) enrichPaper(ctx context.Context, paper scanner.CandidatePaper
 	prompt := e.buildPrompt(paper, researcherName, topicNames)
 
 	systemPrompt := e.cfg.EnrichmentPrompt
-	if paper.IsCoauthor {
-		systemPrompt = strings.ReplaceAll(e.cfg.CoauthorPrompt, "{researcher}", researcherName)
+	if paper.IsCitedAuthor {
+		systemPrompt = strings.ReplaceAll(e.cfg.CitedAuthorPrompt, "{researcher}", researcherName)
 	}
 
-	slog.Debug("enriching paper", "title", paper.Work.Title, "is_coauthor", paper.IsCoauthor)
+	slog.Debug("enriching paper", "title", paper.Work.Title, "is_cited_author", paper.IsCitedAuthor)
 	start := time.Now()
 
 	resp, err := e.client.Models.GenerateContent(ctx, e.model,
@@ -149,8 +149,8 @@ func (e *Enricher) buildPrompt(paper scanner.CandidatePaper, researcherName stri
 	fmt.Fprintf(&sb, "\nResearcher: %s\n", researcherName)
 	fmt.Fprintf(&sb, "Research topics: %s\n", strings.Join(topicNames, ", "))
 
-	if paper.IsCoauthor {
-		fmt.Fprintf(&sb, "\nNote: %s is a former co-author of %s.\n", paper.CoauthorName, researcherName)
+	if paper.IsCitedAuthor {
+		fmt.Fprintf(&sb, "\nNote: %s is a frequently cited author in %s's work.\n", paper.CitedAuthorName, researcherName)
 	}
 
 	sb.WriteString("\nProvide a one-sentence summary of why this paper is relevant.")

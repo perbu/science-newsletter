@@ -10,21 +10,21 @@ import (
 )
 
 const createNewsletterItem = `-- name: CreateNewsletterItem :exec
-INSERT INTO newsletter_items (newsletter_run_id, openalex_id, title, authors, publication_date, doi, relevancy_score, summary, is_coauthor_paper, coauthor_name)
+INSERT INTO newsletter_items (newsletter_run_id, openalex_id, title, authors, publication_date, doi, relevancy_score, summary, is_cited_author_paper, cited_author_name)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateNewsletterItemParams struct {
-	NewsletterRunID int64
-	OpenalexID      string
-	Title           string
-	Authors         string
-	PublicationDate string
-	Doi             string
-	RelevancyScore  float64
-	Summary         string
-	IsCoauthorPaper int64
-	CoauthorName    string
+	NewsletterRunID    int64
+	OpenalexID         string
+	Title              string
+	Authors            string
+	PublicationDate    string
+	Doi                string
+	RelevancyScore     float64
+	Summary            string
+	IsCitedAuthorPaper int64
+	CitedAuthorName    string
 }
 
 func (q *Queries) CreateNewsletterItem(ctx context.Context, arg CreateNewsletterItemParams) error {
@@ -37,8 +37,8 @@ func (q *Queries) CreateNewsletterItem(ctx context.Context, arg CreateNewsletter
 		arg.Doi,
 		arg.RelevancyScore,
 		arg.Summary,
-		arg.IsCoauthorPaper,
-		arg.CoauthorName,
+		arg.IsCitedAuthorPaper,
+		arg.CitedAuthorName,
 	)
 	return err
 }
@@ -86,9 +86,9 @@ func (q *Queries) GetNewsletterRun(ctx context.Context, id int64) (NewsletterRun
 }
 
 const listNewsletterItems = `-- name: ListNewsletterItems :many
-SELECT id, newsletter_run_id, openalex_id, title, authors, publication_date, doi, relevancy_score, summary, is_coauthor_paper, coauthor_name, created_at FROM newsletter_items
+SELECT id, newsletter_run_id, openalex_id, title, authors, publication_date, doi, relevancy_score, summary, is_cited_author_paper, cited_author_name, created_at FROM newsletter_items
 WHERE newsletter_run_id = ?
-ORDER BY is_coauthor_paper DESC, relevancy_score DESC
+ORDER BY is_cited_author_paper DESC, relevancy_score DESC
 `
 
 func (q *Queries) ListNewsletterItems(ctx context.Context, newsletterRunID int64) ([]NewsletterItem, error) {
@@ -110,8 +110,8 @@ func (q *Queries) ListNewsletterItems(ctx context.Context, newsletterRunID int64
 			&i.Doi,
 			&i.RelevancyScore,
 			&i.Summary,
-			&i.IsCoauthorPaper,
-			&i.CoauthorName,
+			&i.IsCitedAuthorPaper,
+			&i.CitedAuthorName,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err

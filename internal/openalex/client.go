@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -100,18 +99,24 @@ func (c *Client) GetAuthor(ctx context.Context, id string) (*Author, error) {
 }
 
 // GetAuthorWorks fetches works for an author using cursor pagination.
-// It returns all works across all pages.
-func (c *Client) GetAuthorWorks(ctx context.Context, authorID string) ([]Work, error) {
-	slog.Info("fetching all works for author", "author_id", authorID)
+// If since is non-zero, only works published on or after that date are returned.
+// It returns all matching works across all pages.
+func (c *Client) GetAuthorWorks(ctx context.Context, authorID string, since time.Time) ([]Work, error) {
+	slog.Info("fetching works for author", "author_id", authorID, "since", since)
 	start := time.Now()
 	var all []Work
 	cursor := "*"
 	page := 0
 
+	filter := "authorships.author.id:" + authorID
+	if !since.IsZero() {
+		filter += ",from_publication_date:" + since.Format("2006-01-02")
+	}
+
 	for {
 		page++
 		params := url.Values{
-			"filter":   {"authorships.author.id:" + authorID},
+			"filter":   {filter},
 			"per_page": {"200"},
 			"cursor":   {cursor},
 		}
@@ -318,31 +323,39 @@ func (c *Client) GetSources(ctx context.Context, sourceIDs []string) ([]SourceDe
 	return all, nil
 }
 
-// ListAllTopics fetches all topics from the /topics endpoint using page-based pagination.
-func (c *Client) ListAllTopics(ctx context.Context) ([]TopicFull, error) {
-	slog.Info("fetching all OpenAlex topics")
-	start := time.Now()
-	var all []TopicFull
-	page := 1
+// GetWorksByIDs batch-fetches works by their OpenAlex IDs.
+// Uses the filter openalex:W1|W2|W3 syntax, chunked into batches of 50.
+// Only fetches id and authorships fields to minimize response size.
+func (c *Client) GetWorksByIDs(ctx context.Context, workIDs []string) ([]Work, error) {
+	if len(workIDs) == 0 {
+		return nil, nil
+	}
 
-	for {
+	slog.Info("batch-fetching works by IDs", "total_ids", len(workIDs))
+	start := time.Now()
+
+	const batchSize = 50
+	var all []Work
+
+	for i := 0; i < len(workIDs); i += batchSize {
+		end := min(i+batchSize, len(workIDs))
+		batch := workIDs[i:end]
+
+		filter := "openalex:" + strings.Join(batch, "|")
 		params := url.Values{
-			"per_page": {"200"},
-			"page":     {strconv.Itoa(page)},
+			"filter":   {filter},
+			"select":   {"id,authorships"},
+			"per_page": {"50"},
 		}
-		var resp TopicsFullResponse
-		if err := c.do(ctx, "/topics", params, &resp); err != nil {
-			return nil, err
+		var resp WorksResponse
+		if err := c.do(ctx, "/works", params, &resp); err != nil {
+			return nil, fmt.Errorf("batch fetch works (batch %d): %w", i/batchSize+1, err)
 		}
 		all = append(all, resp.Results...)
-		slog.Debug("topics page fetched", "page", page, "page_results", len(resp.Results), "total_so_far", len(all))
-
-		if len(resp.Results) == 0 {
-			break
-		}
-		page++
+		slog.Debug("works batch fetched", "batch", i/batchSize+1, "batch_results", len(resp.Results), "total_so_far", len(all))
 	}
-	slog.Info("fetched all topics", "total", len(all), "pages", page-1, "duration", time.Since(start))
+
+	slog.Info("batch-fetched works by IDs", "total", len(all), "duration", time.Since(start))
 	return all, nil
 }
 

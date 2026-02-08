@@ -106,101 +106,74 @@
 </div>
 
 <div class="bg-white rounded-lg shadow p-6 mb-6">
-    <h2 class="text-lg font-bold text-gray-800 mb-3">Research Topics</h2>
-    {{if .Topics}}
-    <div id="topics-table">
+    <h2 class="text-lg font-bold text-gray-800 mb-3">Cited Authors</h2>
+    <p class="text-sm text-gray-500 mb-3">The top 60 most-cited authors from this researcher's recent publications (last 5 years). During paper fetching, new works by active authors are retrieved from OpenAlex. During analysis, papers by active authors bypass the relevancy threshold. Toggle authors off to exclude them, or search below to add authors manually.</p>
+
+    <div class="mb-3">
+        <input type="text" name="query" placeholder="Search authors to add (e.g. John Hattie)..."
+            hx-post="/researchers/{{.Researcher.ID}}/cited-authors/search"
+            hx-trigger="input changed delay:300ms, keyup[key=='Enter']"
+            hx-target="#cited-author-search-results"
+            hx-indicator="#cited-author-search-spinner"
+            class="border border-gray-300 rounded px-3 py-2 text-sm w-full">
+        <span id="cited-author-search-spinner" class="htmx-indicator text-sm text-gray-400">Searching...</span>
+        <div id="cited-author-search-results" class="mt-2"></div>
+    </div>
+
+    <div id="cited-authors-table">
+        {{if not .CitedAuthors}}
+        <p class="text-gray-500 text-sm">No cited authors yet. Sync the researcher's profile or add authors manually.</p>
+        {{else}}
         <table class="w-full text-sm">
             <thead>
                 <tr class="text-left text-gray-500 border-b">
-                    <th class="py-2">Topic</th>
-                    <th class="py-2">Subfield</th>
-                    <th class="py-2">Field</th>
-                    <th class="py-2 text-center">Source</th>
-                    <th class="py-2 text-right">Score</th>
-                    <th class="py-2 text-right w-20"></th>
+                    <th class="py-2 w-16">Active</th>
+                    <th class="py-2">Name</th>
+                    <th class="py-2">Affiliation</th>
+                    <th class="py-2 text-right">Citations</th>
+                    <th class="py-2 text-center w-20">Source</th>
+                    <th class="py-2 text-right w-20">Actions</th>
                 </tr>
             </thead>
             <tbody>
-                {{range .Topics}}
-                <tr class="border-b border-gray-100" id="topic-row-{{.ID}}">
-                    <td class="py-2">{{.Name}}</td>
-                    <td class="py-2 text-gray-500">{{.Subfield}}</td>
-                    <td class="py-2 text-gray-500">{{.Field}}</td>
-                    <td class="py-2 text-center">
-                        {{if eq .Source "manual"}}
-                        <span class="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">manual</span>
-                        {{else if eq .Source "llm"}}
-                        <span class="text-xs px-2 py-0.5 rounded bg-violet-100 text-violet-700">llm</span>
-                        {{else}}
-                        <span class="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700">openalex</span>
-                        {{end}}
-                    </td>
-                    <td class="py-2 text-right">
-                        <input type="number" step="0.001" min="0" max="1000"
-                            value="{{printf "%.3f" .Score}}"
-                            name="score"
-                            hx-put="/researchers/{{$.Researcher.ID}}/topics/{{.ID}}/score"
-                            hx-trigger="change"
-                            hx-swap="none"
-                            class="w-20 text-right font-mono text-sm border border-gray-200 rounded px-1 py-0.5">
-                    </td>
-                    <td class="py-2 text-right">
+                {{range .CitedAuthors}}
+                <tr class="border-b border-gray-100 {{if not .Active}}opacity-50{{end}}">
+                    <td class="py-2">
                         <button
-                            hx-delete="/researchers/{{$.Researcher.ID}}/topics/{{.ID}}"
-                            hx-target="#topic-row-{{.ID}}"
-                            hx-swap="outerHTML"
-                            hx-confirm="Remove topic '{{.Name}}'?"
-                            class="text-red-500 hover:text-red-700 text-xs px-2 py-1">
+                            hx-put="/researchers/{{$.Researcher.ID}}/cited-authors/{{.ID}}/toggle"
+                            hx-target="#cited-authors-table"
+                            hx-swap="innerHTML"
+                            class="text-xs px-2 py-1 rounded {{if .Active}}bg-green-100 text-green-700 hover:bg-green-200{{else}}bg-gray-100 text-gray-500 hover:bg-gray-200{{end}}">
+                            {{if .Active}}On{{else}}Off{{end}}
+                        </button>
+                    </td>
+                    <td class="py-2">{{.Name}}</td>
+                    <td class="py-2 text-gray-500">{{.Affiliation}}</td>
+                    <td class="py-2 text-right font-mono">{{.CitationCount}}</td>
+                    <td class="py-2 text-center">
+                        <span class="text-xs px-2 py-0.5 rounded {{if eq .Source "manual"}}bg-blue-100 text-blue-700{{else}}bg-gray-100 text-gray-600{{end}}">
+                            {{.Source}}
+                        </span>
+                    </td>
+                    <td class="py-2 text-right">
+                        {{if eq .Source "manual"}}
+                        <button
+                            hx-delete="/researchers/{{$.Researcher.ID}}/cited-authors/{{.ID}}"
+                            hx-target="#cited-authors-table"
+                            hx-swap="innerHTML"
+                            hx-confirm="Remove this author?"
+                            class="text-xs text-red-600 hover:text-red-800">
                             Remove
                         </button>
+                        {{end}}
                     </td>
                 </tr>
                 {{end}}
             </tbody>
         </table>
-    </div>
-    {{else}}
-    <p class="text-gray-500 text-sm" id="topics-table">No topics yet. Sync the profile or add topics manually.</p>
-    {{end}}
-
-    <div class="mt-4 border-t pt-4">
-        <h3 class="text-sm font-semibold text-gray-700 mb-2">Add Topic</h3>
-        <div class="flex gap-2 items-center">
-            <input type="text" name="query" placeholder="Search OpenAlex topics..."
-                hx-post="/researchers/{{.Researcher.ID}}/topics/search"
-                hx-trigger="input changed delay:300ms, keyup[key=='Enter']"
-                hx-target="#topic-search-results"
-                hx-indicator="#topic-search-spinner"
-                class="border border-gray-300 rounded px-3 py-2 text-sm flex-1">
-            <span id="topic-search-spinner" class="htmx-indicator text-sm text-gray-400">Searching...</span>
-        </div>
-        <div id="topic-search-results" class="mt-2"></div>
+        {{end}}
     </div>
 </div>
-
-{{if .CoAuthors}}
-<div class="bg-white rounded-lg shadow p-6 mb-6">
-    <h2 class="text-lg font-bold text-gray-800 mb-3">Top Co-Authors</h2>
-    <table class="w-full text-sm">
-        <thead>
-            <tr class="text-left text-gray-500 border-b">
-                <th class="py-2">Name</th>
-                <th class="py-2">Affiliation</th>
-                <th class="py-2 text-right">Collaborations</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{range .CoAuthors}}
-            <tr class="border-b border-gray-100">
-                <td class="py-2">{{.Name}}</td>
-                <td class="py-2 text-gray-500">{{.Affiliation}}</td>
-                <td class="py-2 text-right font-mono">{{.CollaborationCount}}</td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
-</div>
-{{end}}
 
 {{if .Newsletters}}
 <div class="bg-white rounded-lg shadow p-6">

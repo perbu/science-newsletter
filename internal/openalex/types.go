@@ -89,6 +89,7 @@ type Work struct {
 	PrimaryLocation       *Location        `json:"primary_location"`
 	Authorships           []Authorship     `json:"authorships"`
 	Topics                []WorkTopic      `json:"topics"`
+	ReferencedWorks       []string         `json:"referenced_works"`
 	AbstractInvertedIndex map[string][]int `json:"abstract_inverted_index"`
 }
 
@@ -156,24 +157,6 @@ type Meta struct {
 	Count      int    `json:"count"`
 	PerPage    int    `json:"per_page"`
 	NextCursor string `json:"next_cursor"`
-}
-
-// TopicFull represents a complete topic record from the /topics endpoint.
-type TopicFull struct {
-	ID          string   `json:"id"`
-	DisplayName string   `json:"display_name"`
-	Description string   `json:"description"`
-	Keywords    []string `json:"keywords"`
-	Subfield    Subfield `json:"subfield"`
-	Field       Field    `json:"field"`
-	Domain      Domain   `json:"domain"`
-	WorksCount  int      `json:"works_count"`
-}
-
-// TopicsFullResponse wraps paginated /topics results with full detail.
-type TopicsFullResponse struct {
-	Results []TopicFull `json:"results"`
-	Meta    Meta        `json:"meta"`
 }
 
 // TopicSearchResult represents a topic returned from the /topics search endpoint.

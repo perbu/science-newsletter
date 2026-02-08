@@ -34,14 +34,14 @@ type GeminiConfig struct {
 }
 
 type AgentConfig struct {
-	EnrichmentPrompt   string `yaml:"enrichment_prompt"`
-	CoauthorPrompt     string `yaml:"coauthor_prompt"`
+	EnrichmentPrompt  string `yaml:"enrichment_prompt"`
+	CitedAuthorPrompt string `yaml:"cited_author_prompt"`
 }
 
 type ScannerConfig struct {
 	DefaultThreshold float64 `yaml:"default_threshold"`
 	MaxTopics        int     `yaml:"max_topics"`
-	MaxCoauthors     int     `yaml:"max_coauthors"`
+	MaxCitedAuthors  int     `yaml:"max_cited_authors"`
 	LookbackDays     int     `yaml:"lookback_days"`
 	ImpactWeight     float64 `yaml:"impact_weight"`
 }
@@ -65,7 +65,7 @@ func Load(path string) (*Config, error) {
 		Scanner: ScannerConfig{
 			DefaultThreshold: 0.5,
 			MaxTopics:        10,
-			MaxCoauthors:     20,
+			MaxCitedAuthors:  20,
 			LookbackDays:     7,
 			ImpactWeight:     0.3,
 		},

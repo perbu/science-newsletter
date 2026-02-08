@@ -151,21 +151,16 @@ func (h *Handler) ResearcherDetail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Researcher not found", http.StatusNotFound)
 		return
 	}
-	topics, _ := h.queries.ListTopicsByResearcher(r.Context(), id)
-	coauthors, _ := h.queries.ListCoAuthorsByResearcher(r.Context(), id)
-	if len(coauthors) > 20 {
-		coauthors = coauthors[:20]
-	}
+	citedAuthors, _ := h.queries.ListCitedAuthorsByResearcher(r.Context(), id)
 	newsletters, _ := h.queries.ListNewsletterRunsByResearcher(r.Context(), db.ListNewsletterRunsByResearcherParams{
 		ResearcherID: id,
 		Limit:        20,
 	})
 
 	h.renderPage(w, "researcher_detail.html.tmpl", map[string]any{
-		"Researcher":  researcher,
-		"Topics":      topics,
-		"CoAuthors":   coauthors,
-		"Newsletters": newsletters,
+		"Researcher":   researcher,
+		"CitedAuthors": citedAuthors,
+		"Newsletters":  newsletters,
 	})
 }
 
@@ -266,21 +261,21 @@ func (h *Handler) AnalyzeScan(w http.ResponseWriter, r *http.Request) {
 	summaries := h.enricher.EnrichAll(ctx, candidates, researcher.Name, topicNames)
 
 	for _, c := range candidates {
-		isCoauthor := int64(0)
-		if c.IsCoauthor {
-			isCoauthor = 1
+		isCitedAuthor := int64(0)
+		if c.IsCitedAuthor {
+			isCitedAuthor = 1
 		}
 		_ = h.queries.CreateNewsletterItem(ctx, db.CreateNewsletterItemParams{
-			NewsletterRunID: run.ID,
-			OpenalexID:      c.Work.ID,
-			Title:           c.Work.Title,
-			Authors:         scanner.AuthorNames(c.Work),
-			PublicationDate: c.Work.PublicationDate,
-			Doi:             c.Work.DOI,
-			RelevancyScore:  c.RelevancyScore,
-			Summary:         summaries[c.Work.ID],
-			IsCoauthorPaper: isCoauthor,
-			CoauthorName:    c.CoauthorName,
+			NewsletterRunID:    run.ID,
+			OpenalexID:         c.Work.ID,
+			Title:              c.Work.Title,
+			Authors:            scanner.AuthorNames(c.Work),
+			PublicationDate:    c.Work.PublicationDate,
+			Doi:                c.Work.DOI,
+			RelevancyScore:     c.RelevancyScore,
+			Summary:            summaries[c.Work.ID],
+			IsCitedAuthorPaper: isCitedAuthor,
+			CitedAuthorName:    c.CitedAuthorName,
 		})
 	}
 
@@ -368,112 +363,6 @@ func (h *Handler) getTopicNames(ctx context.Context, researcherID int64) []strin
 	return names
 }
 
-func (h *Handler) DeleteTopic(w http.ResponseWriter, r *http.Request) {
-	researcherID, err := parseID(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	topicID, err := strconv.ParseInt(r.PathValue("topicId"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid topic id", http.StatusBadRequest)
-		return
-	}
-	if err := h.queries.DeleteTopic(r.Context(), db.DeleteTopicParams{
-		ID:           topicID,
-		ResearcherID: researcherID,
-	}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	slog.Info("topic deleted", "researcher_id", researcherID, "topic_id", topicID)
-	w.WriteHeader(http.StatusOK)
-}
-
-func (h *Handler) UpdateTopicScore(w http.ResponseWriter, r *http.Request) {
-	researcherID, err := parseID(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	topicID, err := strconv.ParseInt(r.PathValue("topicId"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid topic id", http.StatusBadRequest)
-		return
-	}
-	score, err := strconv.ParseFloat(r.FormValue("score"), 64)
-	if err != nil {
-		http.Error(w, "invalid score", http.StatusBadRequest)
-		return
-	}
-	if err := h.queries.UpdateTopicScore(r.Context(), db.UpdateTopicScoreParams{
-		Score:        score,
-		ID:           topicID,
-		ResearcherID: researcherID,
-	}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	slog.Info("topic score updated", "researcher_id", researcherID, "topic_id", topicID, "score", score)
-	fmt.Fprintf(w, "%.3f", score)
-}
-
-func (h *Handler) SearchTopics(w http.ResponseWriter, r *http.Request) {
-	query := r.FormValue("query")
-	if query == "" {
-		http.Error(w, "query required", http.StatusBadRequest)
-		return
-	}
-	results, err := h.client.SearchTopics(r.Context(), query)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	researcherID, _ := parseID(r)
-	h.renderFragment(w, "topic_search_results.html.tmpl", map[string]any{
-		"Results":      results,
-		"ResearcherID": researcherID,
-	})
-}
-
-func (h *Handler) AddTopic(w http.ResponseWriter, r *http.Request) {
-	researcherID, err := parseID(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	openalexID := r.FormValue("openalex_id")
-	name := r.FormValue("name")
-	subfield := r.FormValue("subfield")
-	field := r.FormValue("field")
-	domain := r.FormValue("domain")
-	score, err := strconv.ParseFloat(r.FormValue("score"), 64)
-	if err != nil {
-		score = 50.0 // reasonable default for manual topics
-	}
-
-	if err := h.queries.UpsertTopic(r.Context(), db.UpsertTopicParams{
-		ResearcherID: researcherID,
-		OpenalexID:   openalexID,
-		Name:         name,
-		Subfield:     subfield,
-		Field:        field,
-		Domain:       domain,
-		Score:        score,
-		Source:       "manual",
-	}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	slog.Info("topic added", "researcher_id", researcherID, "name", name, "openalex_id", openalexID)
-	// Return updated topic list
-	topics, _ := h.queries.ListTopicsByResearcher(r.Context(), researcherID)
-	h.renderFragment(w, "topics_table.html.tmpl", map[string]any{
-		"Topics":     topics,
-		"Researcher": map[string]any{"ID": researcherID},
-	})
-}
-
 func (h *Handler) UpdateResearchInterests(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r)
 	if err != nil {
@@ -490,17 +379,6 @@ func (h *Handler) UpdateResearchInterests(w http.ResponseWriter, r *http.Request
 	}
 	slog.Info("research interests updated", "researcher_id", id, "length", len(interests))
 	fmt.Fprint(w, `<span class="text-green-600">Interests saved.</span>`)
-}
-
-func (h *Handler) MirrorTopics(w http.ResponseWriter, r *http.Request) {
-	count, err := h.syncer.MirrorTopics(r.Context())
-	if err != nil {
-		slog.Error("topic mirror failed", "err", err)
-		fmt.Fprintf(w, `<span class="text-red-600">Mirror failed: %s</span>`, err)
-		return
-	}
-	slog.Info("topic mirror complete", "count", count)
-	fmt.Fprintf(w, `<span class="text-green-600">Mirrored %d topics from OpenAlex.</span>`, count)
 }
 
 type SubfieldItem struct {
@@ -676,6 +554,109 @@ func (h *Handler) SearchSubfields(w http.ResponseWriter, r *http.Request) {
 
 	h.renderFragment(w, "subfield_search_results.html.tmpl", map[string]any{
 		"Results":      items,
+		"ResearcherID": researcherID,
+	})
+}
+
+func (h *Handler) SearchCitedAuthors(w http.ResponseWriter, r *http.Request) {
+	researcherID, err := parseID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	query := r.FormValue("query")
+	if len(query) < 2 {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	results, err := h.client.SearchAuthors(r.Context(), query)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if len(results) > 10 {
+		results = results[:10]
+	}
+	h.renderFragment(w, "cited_author_search_results.html.tmpl", map[string]any{
+		"Results":      results,
+		"ResearcherID": researcherID,
+	})
+}
+
+func (h *Handler) AddCitedAuthor(w http.ResponseWriter, r *http.Request) {
+	researcherID, err := parseID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	citationCount, _ := strconv.ParseInt(r.FormValue("citation_count"), 10, 64)
+	err = h.queries.InsertCitedAuthor(r.Context(), db.InsertCitedAuthorParams{
+		ResearcherID:  researcherID,
+		OpenalexID:    r.FormValue("openalex_id"),
+		Name:          r.FormValue("name"),
+		Affiliation:   r.FormValue("affiliation"),
+		CitationCount: citationCount,
+		Source:        "manual",
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	slog.Info("cited author added manually", "researcher_id", researcherID, "name", r.FormValue("name"))
+	h.renderCitedAuthorsSection(w, r.Context(), researcherID)
+}
+
+func (h *Handler) ToggleCitedAuthor(w http.ResponseWriter, r *http.Request) {
+	researcherID, err := parseID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	authorID, err := strconv.ParseInt(r.PathValue("authorID"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid author ID", http.StatusBadRequest)
+		return
+	}
+	if err := h.queries.ToggleCitedAuthorActive(r.Context(), db.ToggleCitedAuthorActiveParams{
+		ID:           authorID,
+		ResearcherID: researcherID,
+	}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	h.renderCitedAuthorsSection(w, r.Context(), researcherID)
+}
+
+func (h *Handler) DeleteCitedAuthor(w http.ResponseWriter, r *http.Request) {
+	researcherID, err := parseID(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	authorID, err := strconv.ParseInt(r.PathValue("authorID"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid author ID", http.StatusBadRequest)
+		return
+	}
+	if err := h.queries.DeleteCitedAuthor(r.Context(), db.DeleteCitedAuthorParams{
+		ID:           authorID,
+		ResearcherID: researcherID,
+	}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	slog.Info("cited author deleted", "researcher_id", researcherID, "author_id", authorID)
+	h.renderCitedAuthorsSection(w, r.Context(), researcherID)
+}
+
+func (h *Handler) renderCitedAuthorsSection(w http.ResponseWriter, ctx context.Context, researcherID int64) {
+	citedAuthors, err := h.queries.ListCitedAuthorsByResearcher(ctx, researcherID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	h.renderFragment(w, "cited_authors_table.html.tmpl", map[string]any{
+		"CitedAuthors": citedAuthors,
 		"ResearcherID": researcherID,
 	})
 }

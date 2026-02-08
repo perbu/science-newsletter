@@ -19,16 +19,16 @@ type PaperView struct {
 	PublicationDate string
 	DOI             string
 	Summary         string
-	CoauthorName    string
+	CitedAuthorName string
 	ScorePercent    float64
 }
 
 type NewsletterData struct {
-	ResearcherName string
-	Date           string
-	LookbackDays   int
-	CoauthorPapers []PaperView
-	RelevantPapers []PaperView
+	ResearcherName   string
+	Date             string
+	LookbackDays     int
+	CitedAuthorPapers []PaperView
+	RelevantPapers   []PaperView
 }
 
 // Generate renders the newsletter HTML from newsletter items.
@@ -52,10 +52,10 @@ func Generate(researcher db.Researcher, items []db.NewsletterItem, lookbackDays 
 			DOI:             item.Doi,
 			Summary:         item.Summary,
 			ScorePercent:    item.RelevancyScore * 100,
-			CoauthorName:    item.CoauthorName,
+			CitedAuthorName: item.CitedAuthorName,
 		}
-		if item.IsCoauthorPaper != 0 {
-			data.CoauthorPapers = append(data.CoauthorPapers, pv)
+		if item.IsCitedAuthorPaper != 0 {
+			data.CitedAuthorPapers = append(data.CitedAuthorPapers, pv)
 		} else {
 			data.RelevantPapers = append(data.RelevantPapers, pv)
 		}

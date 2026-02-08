@@ -9,13 +9,13 @@
         h1 { color: #1a365d; border-bottom: 2px solid #2b6cb0; padding-bottom: 8px; }
         h2 { color: #2b6cb0; margin-top: 32px; }
         .paper { margin-bottom: 24px; padding: 16px; border-left: 3px solid #bee3f8; background: #f7fafc; }
-        .paper.coauthor { border-left-color: #f6ad55; background: #fffaf0; }
+        .paper.cited-author { border-left-color: #f6ad55; background: #fffaf0; }
         .paper-title { font-size: 1.1em; font-weight: bold; margin-bottom: 4px; }
         .paper-title a { color: #2b6cb0; text-decoration: none; }
         .paper-title a:hover { text-decoration: underline; }
         .paper-meta { font-size: 0.85em; color: #718096; margin-bottom: 8px; }
         .paper-summary { font-size: 0.95em; line-height: 1.5; }
-        .coauthor-badge { display: inline-block; background: #f6ad55; color: #fff; font-size: 0.75em; padding: 2px 8px; border-radius: 3px; margin-left: 8px; }
+        .cited-author-badge { display: inline-block; background: #f6ad55; color: #fff; font-size: 0.75em; padding: 2px 8px; border-radius: 3px; margin-left: 8px; }
         .score { font-size: 0.8em; color: #a0aec0; }
         .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 0.8em; color: #a0aec0; }
     </style>
@@ -24,13 +24,13 @@
     <h1>Weekly Research Newsletter</h1>
     <p>Prepared for <strong>{{.ResearcherName}}</strong> &mdash; {{.Date}}</p>
 
-    {{if .CoauthorPapers}}
-    <h2>Co-Author Publications</h2>
-    {{range .CoauthorPapers}}
-    <div class="paper coauthor">
+    {{if .CitedAuthorPapers}}
+    <h2>Papers from Frequently Cited Authors</h2>
+    {{range .CitedAuthorPapers}}
+    <div class="paper cited-author">
         <div class="paper-title">
             {{if .DOI}}<a href="{{.DOI}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}
-            <span class="coauthor-badge">Co-author: {{.CoauthorName}}</span>
+            <span class="cited-author-badge">Cited author: {{.CitedAuthorName}}</span>
         </div>
         <div class="paper-meta">{{.Authors}} &bull; {{.PublicationDate}}</div>
         <div class="paper-summary">{{.Summary}}</div>
@@ -52,7 +52,7 @@
     {{end}}
     {{end}}
 
-    {{if and (not .CoauthorPapers) (not .RelevantPapers)}}
+    {{if and (not .CitedAuthorPapers) (not .RelevantPapers)}}
     <p>No relevant papers found this week.</p>
     {{end}}
 

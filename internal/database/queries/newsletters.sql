@@ -18,10 +18,10 @@ ORDER BY created_at DESC
 LIMIT ?;
 
 -- name: CreateNewsletterItem :exec
-INSERT INTO newsletter_items (newsletter_run_id, openalex_id, title, authors, publication_date, doi, relevancy_score, summary, is_coauthor_paper, coauthor_name)
+INSERT INTO newsletter_items (newsletter_run_id, openalex_id, title, authors, publication_date, doi, relevancy_score, summary, is_cited_author_paper, cited_author_name)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: ListNewsletterItems :many
 SELECT * FROM newsletter_items
 WHERE newsletter_run_id = ?
-ORDER BY is_coauthor_paper DESC, relevancy_score DESC;
+ORDER BY is_cited_author_paper DESC, relevancy_score DESC;

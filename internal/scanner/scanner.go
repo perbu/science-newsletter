@@ -19,33 +19,32 @@ type CandidatePaper struct {
 	RelevancyScore  float64
 	SourceCitedness float64
 	SourceName      string
-	IsCoauthor      bool
-	CoauthorName    string
+	IsCitedAuthor   bool
+	CitedAuthorName string
 }
 
 type Scanner struct {
-	queries      *db.Queries
-	client       *openalex.Client
-	maxTopics    int
-	maxCoauthors int
-	lookbackDays int
-	impactWeight float64
+	queries         *db.Queries
+	client          *openalex.Client
+	maxTopics       int
+	maxCitedAuthors int
+	lookbackDays    int
+	impactWeight    float64
 }
 
-func New(queries *db.Queries, client *openalex.Client, maxTopics, maxCoauthors, lookbackDays int, impactWeight float64) *Scanner {
+func New(queries *db.Queries, client *openalex.Client, maxTopics, maxCitedAuthors, lookbackDays int, impactWeight float64) *Scanner {
 	return &Scanner{
-		queries:      queries,
-		client:       client,
-		maxTopics:    maxTopics,
-		maxCoauthors: maxCoauthors,
-		lookbackDays: lookbackDays,
-		impactWeight: impactWeight,
+		queries:         queries,
+		client:          client,
+		maxTopics:       maxTopics,
+		maxCitedAuthors: maxCitedAuthors,
+		lookbackDays:    lookbackDays,
+		impactWeight:    impactWeight,
 	}
 }
 
 // FetchWorks fetches recent papers from OpenAlex for the current ISO week and caches them in the DB.
-// If the researcher has field/subfield selections, searches by subfield IDs.
-// Otherwise falls back to topic-based search.
+// Searches for recent works by the researcher's top cited authors.
 // Returns the number of works stored.
 func (s *Scanner) FetchWorks(ctx context.Context, researcherID int64) (int, error) {
 	researcher, err := s.queries.GetResearcher(ctx, researcherID)
@@ -59,111 +58,39 @@ func (s *Scanner) FetchWorks(ctx context.Context, researcherID int64) (int, erro
 
 	var works []openalex.Work
 
-	// Check for subfield selections first
-	selections, err := s.queries.ListFieldSelectionsByResearcher(ctx, researcherID)
+	// Fetch recent works by top cited authors
+	citedAuthors, err := s.queries.ListTopActiveCitedAuthorsByResearcher(ctx, db.ListTopActiveCitedAuthorsByResearcherParams{
+		ResearcherID: researcherID,
+		Limit:        int64(s.maxCitedAuthors),
+	})
 	if err != nil {
-		return 0, fmt.Errorf("list field selections: %w", err)
+		return 0, fmt.Errorf("list cited authors: %w", err)
 	}
 
-	if len(selections) > 0 {
-		// Resolve selections to subfield IDs
-		subfieldIDSet := make(map[string]bool)
-		for _, sel := range selections {
-			switch sel.Level {
-			case "subfield":
-				subfieldIDSet[sel.OpenalexID] = true
-			case "field":
-				sfs, err := s.queries.ListDistinctSubfieldsByField(ctx, sel.OpenalexID)
-				if err != nil {
-					slog.Warn("failed to expand field to subfields", "field_id", sel.OpenalexID, "err", err)
-					continue
-				}
-				for _, sf := range sfs {
-					subfieldIDSet[sf.SubfieldID] = true
-				}
-			}
-		}
-
-		subfieldIDs := make([]string, 0, len(subfieldIDSet))
-		for id := range subfieldIDSet {
-			subfieldIDs = append(subfieldIDs, id)
-		}
-
-		slog.Info("fetching works by subfield selections",
-			"researcher", researcher.Name,
-			"subfield_count", len(subfieldIDs),
-			"since", since.Format("2006-01-02"),
-			"scan_week", scanWeek,
-		)
-
-		works, err = s.client.SearchRecentWorksBySubfields(ctx, subfieldIDs, since)
-		if err != nil {
-			return 0, fmt.Errorf("search recent works by subfields: %w", err)
-		}
-		slog.Info("subfield search returned works", "raw_count", len(works))
-	} else {
-		// Fall back to topic-based search
-		topics, err := s.queries.ListTopTopicsByResearcher(ctx, db.ListTopTopicsByResearcherParams{
-			ResearcherID: researcherID,
-			Limit:        int64(s.maxTopics),
-		})
-		if err != nil {
-			return 0, fmt.Errorf("list topics: %w", err)
-		}
-		if len(topics) == 0 {
-			return 0, fmt.Errorf("researcher %s has no topics and no field selections, sync first", researcher.Name)
-		}
-
-		for _, t := range topics {
-			slog.Debug("search topic", "name", t.Name, "openalex_id", t.OpenalexID, "score", t.Score)
-		}
-
-		topicIDs := make([]string, len(topics))
-		for i, t := range topics {
-			topicIDs[i] = t.OpenalexID
-		}
-
-		slog.Info("fetching works by topics (fallback)",
-			"researcher", researcher.Name,
-			"topic_count", len(topicIDs),
-			"since", since.Format("2006-01-02"),
-			"scan_week", scanWeek,
-		)
-
-		works, err = s.client.SearchRecentWorks(ctx, topicIDs, since)
-		if err != nil {
-			return 0, fmt.Errorf("search recent works: %w", err)
-		}
-		slog.Info("topic search returned works", "raw_count", len(works))
+	if len(citedAuthors) == 0 {
+		return 0, fmt.Errorf("researcher %s has no cited authors, sync first", researcher.Name)
 	}
 
-	// Co-author search
-	if s.maxCoauthors > 0 {
-		coauthors, err := s.queries.ListTopCoAuthorsByResearcher(ctx, db.ListTopCoAuthorsByResearcherParams{
-			ResearcherID: researcherID,
-			Limit:        int64(s.maxCoauthors),
-		})
-		if err != nil {
-			return 0, fmt.Errorf("list co-authors: %w", err)
+	var authorIDs []string
+	for _, ca := range citedAuthors {
+		if ca.OpenalexID == "" {
+			continue
 		}
-
-		if len(coauthors) > 0 {
-			authorIDs := make([]string, len(coauthors))
-			for i, ca := range coauthors {
-				authorIDs[i] = ca.OpenalexID
-			}
-			slog.Info("searching co-author works", "coauthor_count", len(authorIDs))
-
-			coauthorWorks, err := s.client.SearchRecentWorksByAuthors(ctx, authorIDs, since)
-			if err != nil {
-				return 0, fmt.Errorf("search co-author works: %w", err)
-			}
-			slog.Info("co-author search returned works", "raw_count", len(coauthorWorks))
-			works = append(works, coauthorWorks...)
-		} else {
-			slog.Info("no co-authors found, skipping co-author search")
-		}
+		authorIDs = append(authorIDs, ca.OpenalexID)
 	}
+
+	slog.Info("fetching works by cited authors",
+		"researcher", researcher.Name,
+		"author_count", len(authorIDs),
+		"since", since.Format("2006-01-02"),
+		"scan_week", scanWeek,
+	)
+
+	works, err = s.client.SearchRecentWorksByAuthors(ctx, authorIDs, since)
+	if err != nil {
+		return 0, fmt.Errorf("search cited author works: %w", err)
+	}
+	slog.Info("cited author search returned works", "raw_count", len(works))
 
 	// Deduplicate by OpenAlex ID
 	seen := make(map[string]bool)
@@ -299,11 +226,11 @@ func (s *Scanner) AnalyzeWorks(ctx context.Context, researcherID int64, scanWeek
 
 		score := ScorePaper(w, topics, sw.SourceCitedness, s.impactWeight)
 
-		// Check if any author is a co-author
-		isCoauthor := false
-		coauthorName := ""
+		// Check if any author is a frequently cited author
+		isCitedAuthor := false
+		citedAuthorName := ""
 		for _, a := range w.Authorships {
-			ok, err := s.queries.IsCoAuthor(ctx, db.IsCoAuthorParams{
+			ok, err := s.queries.IsActiveCitedAuthor(ctx, db.IsActiveCitedAuthorParams{
 				ResearcherID: researcherID,
 				OpenalexID:   a.Author.ID,
 			})
@@ -311,28 +238,28 @@ func (s *Scanner) AnalyzeWorks(ctx context.Context, researcherID int64, scanWeek
 				continue
 			}
 			if ok {
-				isCoauthor = true
-				coauthorName = a.Author.DisplayName
+				isCitedAuthor = true
+				citedAuthorName = a.Author.DisplayName
 				break
 			}
 		}
 
-		if score >= researcher.RelevancyThreshold || isCoauthor {
+		if score >= researcher.RelevancyThreshold || isCitedAuthor {
 			slog.Debug("paper included",
 				"title", w.Title,
 				"score", fmt.Sprintf("%.3f", score),
 				"source_citedness", fmt.Sprintf("%.2f", sw.SourceCitedness),
 				"source_name", sw.SourceName,
-				"is_coauthor", isCoauthor,
-				"coauthor", coauthorName,
+				"is_cited_author", isCitedAuthor,
+				"cited_author", citedAuthorName,
 			)
 			candidates = append(candidates, CandidatePaper{
 				Work:            w,
 				RelevancyScore:  score,
 				SourceCitedness: sw.SourceCitedness,
 				SourceName:      sw.SourceName,
-				IsCoauthor:      isCoauthor,
-				CoauthorName:    coauthorName,
+				IsCitedAuthor:   isCitedAuthor,
+				CitedAuthorName: citedAuthorName,
 			})
 		} else {
 			belowThreshold++

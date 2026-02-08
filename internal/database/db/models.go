@@ -9,30 +9,31 @@ import (
 	"time"
 )
 
-type CoAuthor struct {
-	ID                 int64
-	ResearcherID       int64
-	OpenalexID         string
-	Name               string
-	Affiliation        string
-	CollaborationCount int64
-	LastCollaborated   string
-	CreatedAt          time.Time
+type CitedAuthor struct {
+	ID            int64
+	ResearcherID  int64
+	OpenalexID    string
+	Name          string
+	Affiliation   string
+	CitationCount int64
+	CreatedAt     time.Time
+	Source        string
+	Active        int64
 }
 
 type NewsletterItem struct {
-	ID              int64
-	NewsletterRunID int64
-	OpenalexID      string
-	Title           string
-	Authors         string
-	PublicationDate string
-	Doi             string
-	RelevancyScore  float64
-	Summary         string
-	IsCoauthorPaper int64
-	CoauthorName    string
-	CreatedAt       time.Time
+	ID                 int64
+	NewsletterRunID    int64
+	OpenalexID         string
+	Title              string
+	Authors            string
+	PublicationDate    string
+	Doi                string
+	RelevancyScore     float64
+	Summary            string
+	IsCitedAuthorPaper int64
+	CitedAuthorName    string
+	CreatedAt          time.Time
 }
 
 type NewsletterRun struct {

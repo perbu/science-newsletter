@@ -61,7 +61,7 @@ func run() error {
 	queries := db.New(sqlDB)
 	oaClient := openalex.NewClient(cfg.OpenAlex.Email, cfg.OpenAlex.APIKey)
 	syncer := syncpkg.New(queries, oaClient)
-	scn := scanner.New(queries, oaClient, cfg.Scanner.MaxTopics, cfg.Scanner.MaxCoauthors, cfg.Scanner.LookbackDays, cfg.Scanner.ImpactWeight)
+	scn := scanner.New(queries, oaClient, cfg.Scanner.MaxTopics, cfg.Scanner.MaxCitedAuthors, cfg.Scanner.LookbackDays, cfg.Scanner.ImpactWeight)
 
 	// Initialize enricher (optional — works without API key, just gives default summaries)
 	var enricher *agent.Enricher

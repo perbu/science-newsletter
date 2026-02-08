@@ -1,0 +1,51 @@
+{{if not .CitedAuthors}}
+<p class="text-gray-500 text-sm">No cited authors yet. Sync the researcher's profile or add authors manually.</p>
+{{else}}
+<table class="w-full text-sm">
+    <thead>
+        <tr class="text-left text-gray-500 border-b">
+            <th class="py-2 w-16">Active</th>
+            <th class="py-2">Name</th>
+            <th class="py-2">Affiliation</th>
+            <th class="py-2 text-right">Citations</th>
+            <th class="py-2 text-center w-20">Source</th>
+            <th class="py-2 text-right w-20">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{range .CitedAuthors}}
+        <tr class="border-b border-gray-100 {{if not .Active}}opacity-50{{end}}">
+            <td class="py-2">
+                <button
+                    hx-put="/researchers/{{$.ResearcherID}}/cited-authors/{{.ID}}/toggle"
+                    hx-target="#cited-authors-table"
+                    hx-swap="innerHTML"
+                    class="text-xs px-2 py-1 rounded {{if .Active}}bg-green-100 text-green-700 hover:bg-green-200{{else}}bg-gray-100 text-gray-500 hover:bg-gray-200{{end}}">
+                    {{if .Active}}On{{else}}Off{{end}}
+                </button>
+            </td>
+            <td class="py-2">{{.Name}}</td>
+            <td class="py-2 text-gray-500">{{.Affiliation}}</td>
+            <td class="py-2 text-right font-mono">{{.CitationCount}}</td>
+            <td class="py-2 text-center">
+                <span class="text-xs px-2 py-0.5 rounded {{if eq .Source "manual"}}bg-blue-100 text-blue-700{{else}}bg-gray-100 text-gray-600{{end}}">
+                    {{.Source}}
+                </span>
+            </td>
+            <td class="py-2 text-right">
+                {{if eq .Source "manual"}}
+                <button
+                    hx-delete="/researchers/{{$.ResearcherID}}/cited-authors/{{.ID}}"
+                    hx-target="#cited-authors-table"
+                    hx-swap="innerHTML"
+                    hx-confirm="Remove this author?"
+                    class="text-xs text-red-600 hover:text-red-800">
+                    Remove
+                </button>
+                {{end}}
+            </td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+{{end}}
