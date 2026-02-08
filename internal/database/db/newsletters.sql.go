@@ -49,7 +49,7 @@ VALUES (?, 'pending')
 RETURNING id, researcher_id, status, papers_found, papers_included, html_content, created_at, completed_at
 `
 
-func (q *Queries) CreateNewsletterRun(ctx context.Context, researcherID int64) (NewsletterRun, error) {
+func (q *Queries) CreateNewsletterRun(ctx context.Context, researcherID string) (NewsletterRun, error) {
 	row := q.db.QueryRowContext(ctx, createNewsletterRun, researcherID)
 	var i NewsletterRun
 	err := row.Scan(
@@ -135,7 +135,7 @@ LIMIT ?
 `
 
 type ListNewsletterRunsByResearcherParams struct {
-	ResearcherID int64
+	ResearcherID string
 	Limit        int64
 }
 

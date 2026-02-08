@@ -2,12 +2,12 @@
 
 ## What This Is
 
-A weekly academic newsletter agent. Given a researcher, it syncs their profile from OpenAlex (publications, frequently
+A monthly academic newsletter agent. Given a researcher, it syncs their profile from OpenAlex (publications, frequently
 cited authors from referenced works), scans for recent papers relevant to their work, uses Google Gemini to generate
 contextual summaries, and produces an HTML newsletter. There's an HTMX frontend for managing researchers and triggering
 scans.
 
-The target user is a non-technical person (my wife, a researcher) who wants a weekly digest of papers relevant to her
+The target user is a non-technical person (my wife, a researcher) who wants a monthly digest of papers relevant to her
 field without manually trawling OpenAlex or Google Scholar. I have a few more friends which will be interested as
 well. This is mostly a community service.
 
@@ -85,18 +85,20 @@ The scanner is split into two independent phases so you can re-analyze cached da
 3. If no selections exist: fall back to topic-based search using researcher's `topics` table
 4. Also search for recent works by top cited authors (from `cited_authors` table)
 5. Deduplicate, reconstruct abstracts from inverted index, marshal authorships/topics to JSON
-6. Upsert all works into `scanned_works` table, keyed by `(researcher_id, openalex_id, scan_week)`
+6. Upsert all works into `scanned_works` table, keyed by `(researcher_id, openalex_id, scan_month)`
 
 ### Analyze phase (`POST /researchers/{id}/analyze`)
 
-1. Load cached works from `scanned_works` for the current ISO week
+1. Load cached works from `scanned_works` for the previous calendar month
 2. Score each paper: `sum(matching topic shares) / sum(search topic shares)` — range [0,1]
 3. Papers above the researcher's `relevancy_threshold` are included; cited author papers always included
 4. Gemini generates a one-sentence summary for each included paper
 5. Results stored in `newsletter_runs` + `newsletter_items`, HTML rendered from template
 
-All scans align to ISO weeks (Monday–Sunday). The `scan_week` column stores the Monday date (e.g. `"2026-02-02"`).
-Re-fetching the same week refreshes the cached data. Re-analyzing re-scores and re-enriches without hitting OpenAlex.
+Both phases always target the **previous** calendar month (e.g. running in February covers January). This means you
+can run on the 1st of the month and get a complete period. The `scan_month` column stores the year-month
+(e.g. `"2026-01"`). Re-fetching the same month refreshes the cached data. Re-analyzing re-scores and re-enriches
+without hitting OpenAlex.
 
 ### Open questions
 

@@ -3,7 +3,9 @@ module github.com/perbu/science-newsletter
 go 1.25.6
 
 require (
+	github.com/google/uuid v1.6.0
 	github.com/pressly/goose/v3 v3.26.0
+	github.com/resend/resend-go/v2 v2.28.0
 	google.golang.org/genai v1.45.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.44.3
@@ -27,7 +29,6 @@ require (
 	github.com/google/cel-go v0.26.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.6 // indirect
 	github.com/googleapis/gax-go/v2 v2.15.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
@@ -46,7 +47,6 @@ require (
 	github.com/pingcap/log v1.1.0 // indirect
 	github.com/pingcap/tidb/pkg/parser v0.0.0-20250324122243-d51e00e5bbf0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/resend/resend-go/v2 v2.28.0 // indirect
 	github.com/riza-io/grpc-go v0.2.0 // indirect
 	github.com/sethvargo/go-retry v0.3.0 // indirect
 	github.com/spf13/cobra v1.9.1 // indirect

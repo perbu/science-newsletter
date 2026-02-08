@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -133,6 +134,159 @@ func (e *Enricher) EnrichAll(ctx context.Context, papers []scanner.CandidatePape
 	return summaries
 }
 
+// PaperEvaluation is the structured JSON response from the LLM filter.
+type PaperEvaluation struct {
+	Score   int    `json:"score"`   // 1-10
+	Include bool   `json:"include"` // LLM's verdict
+	Summary string `json:"summary"` // one-sentence explanation
+}
+
+// FilterResult is a paper that passed the LLM filter.
+type FilterResult struct {
+	Paper   scanner.CandidatePaper
+	Summary string
+}
+
+// FilterAndEnrich evaluates each paper against the researcher's interests using Gemini,
+// returning only papers the LLM deems relevant (score >= 6) along with summaries.
+func (e *Enricher) FilterAndEnrich(ctx context.Context, papers []scanner.CandidatePaper, researcherName, researchInterests string) ([]FilterResult, error) {
+	slog.Info("starting LLM filter+enrich batch", "papers", len(papers), "model", e.model)
+	start := time.Now()
+
+	var results []FilterResult
+	var totalPrompt, totalResponse, totalAll int32
+	included, excluded := 0, 0
+
+	for i, p := range papers {
+		slog.Debug("evaluating paper", "index", i+1, "of", len(papers), "title", p.Work.Title)
+
+		eval, tokens, err := e.evaluatePaper(ctx, p, researcherName, researchInterests)
+		if err != nil {
+			return nil, fmt.Errorf("evaluate paper %q: %w", p.Work.Title, err)
+		}
+
+		totalPrompt += tokens.promptTokens
+		totalResponse += tokens.responseTokens
+		totalAll += tokens.totalTokens
+
+		p.RelevancyScore = float64(eval.Score) / 10.0
+
+		slog.Info("paper evaluated",
+			"title", p.Work.Title,
+			"score", eval.Score,
+			"include", eval.Include,
+			"is_cited_author", p.IsCitedAuthor,
+		)
+
+		if eval.Include {
+			results = append(results, FilterResult{
+				Paper:   p,
+				Summary: eval.Summary,
+			})
+			included++
+		} else {
+			excluded++
+		}
+	}
+
+	slog.Info("LLM filter+enrich complete",
+		"papers", len(papers),
+		"included", included,
+		"excluded", excluded,
+		"total_prompt_tokens", totalPrompt,
+		"total_response_tokens", totalResponse,
+		"total_tokens", totalAll,
+		"duration", time.Since(start),
+	)
+
+	return results, nil
+}
+
+func (e *Enricher) evaluatePaper(ctx context.Context, paper scanner.CandidatePaper, researcherName, researchInterests string) (PaperEvaluation, enrichResult, error) {
+	if e.client == nil {
+		// Noop enricher: include everything
+		return PaperEvaluation{Score: 7, Include: true, Summary: "Relevant to the researcher's area of study."}, enrichResult{}, nil
+	}
+
+	prompt := e.buildFilterPrompt(paper, researcherName, researchInterests)
+
+	slog.Debug("evaluating paper with LLM", "title", paper.Work.Title, "is_cited_author", paper.IsCitedAuthor)
+	start := time.Now()
+
+	resp, err := e.client.Models.GenerateContent(ctx, e.model,
+		genai.Text(prompt),
+		&genai.GenerateContentConfig{
+			SystemInstruction: &genai.Content{
+				Parts: []*genai.Part{{Text: e.cfg.FilterPrompt}},
+			},
+			ResponseMIMEType: "application/json",
+			ResponseSchema: &genai.Schema{
+				Type: genai.TypeObject,
+				Properties: map[string]*genai.Schema{
+					"score":   {Type: genai.TypeInteger, Description: "Relevancy score from 1 to 10"},
+					"include": {Type: genai.TypeBoolean, Description: "Whether to include this paper"},
+					"summary": {Type: genai.TypeString, Description: "One-sentence summary of relevance"},
+				},
+				Required: []string{"score", "include", "summary"},
+			},
+		},
+	)
+	elapsed := time.Since(start)
+	if err != nil {
+		slog.Error("gemini filter request failed", "title", paper.Work.Title, "duration", elapsed, "err", err)
+		return PaperEvaluation{}, enrichResult{}, fmt.Errorf("generate content: %w", err)
+	}
+
+	var tokens enrichResult
+	if resp.UsageMetadata != nil {
+		tokens.promptTokens = resp.UsageMetadata.PromptTokenCount
+		tokens.responseTokens = resp.UsageMetadata.CandidatesTokenCount
+		tokens.totalTokens = resp.UsageMetadata.TotalTokenCount
+	}
+	slog.Debug("gemini filter response",
+		"title", paper.Work.Title,
+		"duration", elapsed,
+		"prompt_tokens", tokens.promptTokens,
+		"response_tokens", tokens.responseTokens,
+	)
+
+	var eval PaperEvaluation
+	if err := json.Unmarshal([]byte(resp.Text()), &eval); err != nil {
+		return PaperEvaluation{}, tokens, fmt.Errorf("unmarshal evaluation: %w", err)
+	}
+
+	return eval, tokens, nil
+}
+
+func (e *Enricher) buildFilterPrompt(paper scanner.CandidatePaper, researcherName, researchInterests string) string {
+	authors := scanner.AuthorNames(paper.Work)
+	abstract := paper.Abstract
+
+	// Collect paper topic names
+	var topicNames []string
+	for _, t := range paper.Work.Topics {
+		topicNames = append(topicNames, t.DisplayName)
+	}
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Paper: %s\n", paper.Work.Title)
+	fmt.Fprintf(&sb, "Authors: %s\n", authors)
+	if abstract != "" {
+		fmt.Fprintf(&sb, "Abstract: %s\n", abstract)
+	}
+	if len(topicNames) > 0 {
+		fmt.Fprintf(&sb, "Paper topics: %s\n", strings.Join(topicNames, ", "))
+	}
+	fmt.Fprintf(&sb, "\nResearcher: %s\n", researcherName)
+	fmt.Fprintf(&sb, "Research interests: %s\n", researchInterests)
+
+	if paper.IsCitedAuthor {
+		fmt.Fprintf(&sb, "\nNote: This paper includes a frequently cited author (%s).\n", paper.CitedAuthorName)
+	}
+
+	return sb.String()
+}
+
 func (e *Enricher) buildPrompt(paper scanner.CandidatePaper, researcherName string, topicNames []string) string {
 	authors := scanner.AuthorNames(paper.Work)
 	abstract := paper.Work.AbstractText()
@@ -150,9 +304,9 @@ func (e *Enricher) buildPrompt(paper scanner.CandidatePaper, researcherName stri
 	fmt.Fprintf(&sb, "Research topics: %s\n", strings.Join(topicNames, ", "))
 
 	if paper.IsCitedAuthor {
-		fmt.Fprintf(&sb, "\nNote: %s is a frequently cited author in %s's work.\n", paper.CitedAuthorName, researcherName)
+		fmt.Fprintf(&sb, "\nNote: This paper includes a frequently cited author (%s).\n", paper.CitedAuthorName)
 	}
 
-	sb.WriteString("\nProvide a one-sentence summary of why this paper is relevant.")
+	sb.WriteString("\nProvide a one-sentence summary of what this paper found or contributes.")
 	return sb.String()
 }

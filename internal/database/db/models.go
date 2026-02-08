@@ -11,7 +11,7 @@ import (
 
 type CitedAuthor struct {
 	ID            int64
-	ResearcherID  int64
+	ResearcherID  string
 	OpenalexID    string
 	Name          string
 	Affiliation   string
@@ -38,7 +38,7 @@ type NewsletterItem struct {
 
 type NewsletterRun struct {
 	ID             int64
-	ResearcherID   int64
+	ResearcherID   string
 	Status         string
 	PapersFound    int64
 	PapersIncluded int64
@@ -66,7 +66,7 @@ type OpenalexTopic struct {
 type Publication struct {
 	ID              int64
 	OpenalexID      string
-	ResearcherID    int64
+	ResearcherID    string
 	Title           string
 	PublicationDate string
 	Doi             string
@@ -75,7 +75,7 @@ type Publication struct {
 }
 
 type Researcher struct {
-	ID                 int64
+	ID                 string
 	OpenalexID         string
 	Name               string
 	Affiliation        string
@@ -90,7 +90,7 @@ type Researcher struct {
 
 type ResearcherFieldSelection struct {
 	ID           int64
-	ResearcherID int64
+	ResearcherID string
 	Level        string
 	OpenalexID   string
 	DisplayName  string
@@ -98,8 +98,8 @@ type ResearcherFieldSelection struct {
 
 type ScannedWork struct {
 	ID              int64
-	ResearcherID    int64
-	ScanWeek        string
+	ResearcherID    string
+	ScanMonth       string
 	OpenalexID      string
 	Title           string
 	Doi             sql.NullString
@@ -115,7 +115,7 @@ type ScannedWork struct {
 
 type Topic struct {
 	ID           int64
-	ResearcherID int64
+	ResearcherID string
 	OpenalexID   string
 	Name         string
 	Subfield     string

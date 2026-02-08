@@ -21,7 +21,7 @@ func New(queries *db.Queries, client *openalex.Client) *Syncer {
 }
 
 // SyncResearcher fetches the researcher's profile, works, cited authors, and topics from OpenAlex.
-func (s *Syncer) SyncResearcher(ctx context.Context, researcherID int64) error {
+func (s *Syncer) SyncResearcher(ctx context.Context, researcherID string) error {
 	start := time.Now()
 	researcher, err := s.queries.GetResearcher(ctx, researcherID)
 	if err != nil {
@@ -74,7 +74,7 @@ func (s *Syncer) SyncResearcher(ctx context.Context, researcherID int64) error {
 	return nil
 }
 
-func (s *Syncer) syncTopics(ctx context.Context, researcherID int64, topics []openalex.AuthorTopic) error {
+func (s *Syncer) syncTopics(ctx context.Context, researcherID string, topics []openalex.AuthorTopic) error {
 	slog.Debug("syncing topics", "count", len(topics))
 	// Only delete OpenAlex-sourced topics; manual topics are preserved.
 	if err := s.queries.DeleteOpenAlexTopicsByResearcher(ctx, researcherID); err != nil {
@@ -106,7 +106,7 @@ func (s *Syncer) syncTopics(ctx context.Context, researcherID int64, topics []op
 	return nil
 }
 
-func (s *Syncer) syncWorks(ctx context.Context, researcherID int64, authorOpenAlexID string) error {
+func (s *Syncer) syncWorks(ctx context.Context, researcherID string, authorOpenAlexID string) error {
 	// Only fetch last 5 years of publications for cited author discovery
 	fiveYearsAgo := time.Now().AddDate(-5, 0, 0)
 	works, err := s.client.GetAuthorWorks(ctx, authorOpenAlexID, fiveYearsAgo)

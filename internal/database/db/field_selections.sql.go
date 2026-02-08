@@ -15,7 +15,7 @@ WHERE researcher_id = ? AND level = ? AND openalex_id = ?
 `
 
 type DeleteFieldSelectionParams struct {
-	ResearcherID int64
+	ResearcherID string
 	Level        string
 	OpenalexID   string
 }
@@ -31,7 +31,7 @@ WHERE researcher_id = ?
 ORDER BY level, display_name
 `
 
-func (q *Queries) ListFieldSelectionsByResearcher(ctx context.Context, researcherID int64) ([]ResearcherFieldSelection, error) {
+func (q *Queries) ListFieldSelectionsByResearcher(ctx context.Context, researcherID string) ([]ResearcherFieldSelection, error) {
 	rows, err := q.db.QueryContext(ctx, listFieldSelectionsByResearcher, researcherID)
 	if err != nil {
 		return nil, err
@@ -68,7 +68,7 @@ ON CONFLICT(researcher_id, level, openalex_id) DO UPDATE SET
 `
 
 type UpsertFieldSelectionParams struct {
-	ResearcherID int64
+	ResearcherID string
 	Level        string
 	OpenalexID   string
 	DisplayName  string

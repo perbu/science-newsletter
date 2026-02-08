@@ -21,7 +21,7 @@
     </style>
 </head>
 <body>
-    <h1>Weekly Research Newsletter</h1>
+    <h1>Monthly Research Newsletter</h1>
     <p>Prepared for <strong>{{.ResearcherName}}</strong> &mdash; {{.Date}}</p>
 
     {{if .CitedAuthorPapers}}
@@ -53,7 +53,7 @@
     {{end}}
 
     {{if and (not .CitedAuthorPapers) (not .RelevantPapers)}}
-    <p>No relevant papers found this week.</p>
+    <p>No relevant papers found this month.</p>
     {{end}}
 
     <div class="footer">

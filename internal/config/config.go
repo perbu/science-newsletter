@@ -36,6 +36,7 @@ type GeminiConfig struct {
 type AgentConfig struct {
 	EnrichmentPrompt  string `yaml:"enrichment_prompt"`
 	CitedAuthorPrompt string `yaml:"cited_author_prompt"`
+	FilterPrompt      string `yaml:"filter_prompt"`
 }
 
 type ScannerConfig struct {
@@ -66,7 +67,7 @@ func Load(path string) (*Config, error) {
 			DefaultThreshold: 0.5,
 			MaxTopics:        10,
 			MaxCitedAuthors:  20,
-			LookbackDays:     7,
+			LookbackDays:     30,
 			ImpactWeight:     0.3,
 		},
 		Gemini: GeminiConfig{

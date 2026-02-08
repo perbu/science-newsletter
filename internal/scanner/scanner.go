@@ -16,6 +16,7 @@ import (
 // CandidatePaper is a paper found during scanning with its relevancy metadata.
 type CandidatePaper struct {
 	Work            openalex.Work
+	Abstract        string  // populated from scanned_works.abstract (AbstractText() doesn't work on cached works)
 	RelevancyScore  float64
 	SourceCitedness float64
 	SourceName      string
@@ -43,17 +44,16 @@ func New(queries *db.Queries, client *openalex.Client, maxTopics, maxCitedAuthor
 	}
 }
 
-// FetchWorks fetches recent papers from OpenAlex for the current ISO week and caches them in the DB.
+// FetchWorks fetches recent papers from OpenAlex for the previous calendar month and caches them in the DB.
 // Searches for recent works by the researcher's top cited authors.
 // Returns the number of works stored.
-func (s *Scanner) FetchWorks(ctx context.Context, researcherID int64) (int, error) {
+func (s *Scanner) FetchWorks(ctx context.Context, researcherID string) (int, error) {
 	researcher, err := s.queries.GetResearcher(ctx, researcherID)
 	if err != nil {
 		return 0, fmt.Errorf("get researcher: %w", err)
 	}
 
-	weekStart := WeekStart(time.Now())
-	scanWeek := weekStart.Format("2006-01-02")
+	scanMonth := MonthStart(time.Now()).AddDate(0, -1, 0).Format("2006-01")
 	since := time.Now().AddDate(0, 0, -s.lookbackDays)
 
 	var works []openalex.Work
@@ -83,7 +83,7 @@ func (s *Scanner) FetchWorks(ctx context.Context, researcherID int64) (int, erro
 		"researcher", researcher.Name,
 		"author_count", len(authorIDs),
 		"since", since.Format("2006-01-02"),
-		"scan_week", scanWeek,
+		"scan_month", scanMonth,
 	)
 
 	works, err = s.client.SearchRecentWorksByAuthors(ctx, authorIDs, since)
@@ -159,7 +159,7 @@ func (s *Scanner) FetchWorks(ctx context.Context, researcherID int64) (int, erro
 
 		err = s.queries.UpsertScannedWork(ctx, db.UpsertScannedWorkParams{
 			ResearcherID:    researcherID,
-			ScanWeek:        scanWeek,
+			ScanMonth:        scanMonth,
 			OpenalexID:      w.ID,
 			Title:           w.Title,
 			Doi:             sql.NullString{String: w.DOI, Valid: w.DOI != ""},
@@ -176,12 +176,71 @@ func (s *Scanner) FetchWorks(ctx context.Context, researcherID int64) (int, erro
 		}
 	}
 
-	slog.Info("cached works in DB", "count", len(unique), "scan_week", scanWeek)
+	slog.Info("cached works in DB", "count", len(unique), "scan_month", scanMonth)
 	return len(unique), nil
 }
 
-// AnalyzeWorks scores cached works for a given scan week and returns candidates above the threshold.
-func (s *Scanner) AnalyzeWorks(ctx context.Context, researcherID int64, scanWeek time.Time) ([]CandidatePaper, error) {
+// LoadCachedWorks loads cached works for the previous calendar month and tags cited author status.
+// No scoring or filtering is applied — that's deferred to the LLM-based FilterAndEnrich step.
+func (s *Scanner) LoadCachedWorks(ctx context.Context, researcherID string) ([]CandidatePaper, error) {
+	monthStr := MonthStart(time.Now()).AddDate(0, -1, 0).Format("2006-01")
+
+	cached, err := s.queries.ListScannedWorksByMonth(ctx, db.ListScannedWorksByMonthParams{
+		ResearcherID: researcherID,
+		ScanMonth:    monthStr,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list cached works: %w", err)
+	}
+
+	slog.Info("loading cached works",
+		"researcher_id", researcherID,
+		"scan_month", monthStr,
+		"count", len(cached),
+	)
+
+	var papers []CandidatePaper
+	for _, sw := range cached {
+		w, err := cachedWorkToOpenAlex(sw)
+		if err != nil {
+			slog.Warn("skipping malformed cached work", "id", sw.OpenalexID, "error", err)
+			continue
+		}
+
+		// Check if any author is a frequently cited author
+		isCitedAuthor := false
+		citedAuthorName := ""
+		for _, a := range w.Authorships {
+			ok, err := s.queries.IsActiveCitedAuthor(ctx, db.IsActiveCitedAuthorParams{
+				ResearcherID: researcherID,
+				OpenalexID:   a.Author.ID,
+			})
+			if err != nil {
+				continue
+			}
+			if ok {
+				isCitedAuthor = true
+				citedAuthorName = a.Author.DisplayName
+				break
+			}
+		}
+
+		papers = append(papers, CandidatePaper{
+			Work:            w,
+			Abstract:        sw.Abstract.String,
+			SourceCitedness: sw.SourceCitedness,
+			SourceName:      sw.SourceName,
+			IsCitedAuthor:   isCitedAuthor,
+			CitedAuthorName: citedAuthorName,
+		})
+	}
+
+	slog.Info("cached works loaded", "total", len(papers))
+	return papers, nil
+}
+
+// AnalyzeWorks scores cached works for a given scan month and returns candidates above the threshold.
+func (s *Scanner) AnalyzeWorks(ctx context.Context, researcherID string, scanMonth time.Time) ([]CandidatePaper, error) {
 	researcher, err := s.queries.GetResearcher(ctx, researcherID)
 	if err != nil {
 		return nil, fmt.Errorf("get researcher: %w", err)
@@ -198,10 +257,10 @@ func (s *Scanner) AnalyzeWorks(ctx context.Context, researcherID int64, scanWeek
 		return nil, fmt.Errorf("researcher %s has no topics, sync first", researcher.Name)
 	}
 
-	weekStr := scanWeek.Format("2006-01-02")
-	cached, err := s.queries.ListScannedWorksByWeek(ctx, db.ListScannedWorksByWeekParams{
+	monthStr := scanMonth.Format("2006-01")
+	cached, err := s.queries.ListScannedWorksByMonth(ctx, db.ListScannedWorksByMonthParams{
 		ResearcherID: researcherID,
-		ScanWeek:     weekStr,
+		ScanMonth:    monthStr,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list cached works: %w", err)
@@ -209,7 +268,7 @@ func (s *Scanner) AnalyzeWorks(ctx context.Context, researcherID int64, scanWeek
 
 	slog.Info("analyzing cached works",
 		"researcher", researcher.Name,
-		"scan_week", weekStr,
+		"scan_month", monthStr,
 		"cached_count", len(cached),
 		"threshold", researcher.RelevancyThreshold,
 	)
@@ -282,8 +341,8 @@ func (s *Scanner) AnalyzeWorks(ctx context.Context, researcherID int64, scanWeek
 	return candidates, nil
 }
 
-// RunScan fetches recent works and analyzes them in one step.
-func (s *Scanner) RunScan(ctx context.Context, researcherID int64) ([]CandidatePaper, error) {
+// RunScan fetches recent works and loads them (without scoring) in one step.
+func (s *Scanner) RunScan(ctx context.Context, researcherID string) ([]CandidatePaper, error) {
 	start := time.Now()
 
 	_, err := s.FetchWorks(ctx, researcherID)
@@ -291,14 +350,13 @@ func (s *Scanner) RunScan(ctx context.Context, researcherID int64) ([]CandidateP
 		return nil, err
 	}
 
-	weekStart := WeekStart(time.Now())
-	candidates, err := s.AnalyzeWorks(ctx, researcherID, weekStart)
+	papers, err := s.LoadCachedWorks(ctx, researcherID)
 	if err != nil {
 		return nil, err
 	}
 
 	slog.Info("scan complete", "duration", time.Since(start))
-	return candidates, nil
+	return papers, nil
 }
 
 // cachedWorkToOpenAlex reconstructs an openalex.Work from a cached ScannedWork row.

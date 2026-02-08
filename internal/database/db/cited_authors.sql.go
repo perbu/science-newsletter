@@ -16,7 +16,7 @@ WHERE id = ? AND researcher_id = ?
 
 type DeleteCitedAuthorParams struct {
 	ID           int64
-	ResearcherID int64
+	ResearcherID string
 }
 
 func (q *Queries) DeleteCitedAuthor(ctx context.Context, arg DeleteCitedAuthorParams) error {
@@ -28,7 +28,7 @@ const deleteCitedAuthorsByResearcher = `-- name: DeleteCitedAuthorsByResearcher 
 DELETE FROM cited_authors WHERE researcher_id = ?
 `
 
-func (q *Queries) DeleteCitedAuthorsByResearcher(ctx context.Context, researcherID int64) error {
+func (q *Queries) DeleteCitedAuthorsByResearcher(ctx context.Context, researcherID string) error {
 	_, err := q.db.ExecContext(ctx, deleteCitedAuthorsByResearcher, researcherID)
 	return err
 }
@@ -39,7 +39,7 @@ WHERE researcher_id = ? AND openalex_id = ? AND source = 'openalex_sync'
 `
 
 type DeleteSyncedCitedAuthorParams struct {
-	ResearcherID int64
+	ResearcherID string
 	OpenalexID   string
 }
 
@@ -54,7 +54,7 @@ VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type InsertCitedAuthorParams struct {
-	ResearcherID  int64
+	ResearcherID  string
 	OpenalexID    string
 	Name          string
 	Affiliation   string
@@ -80,7 +80,7 @@ WHERE researcher_id = ? AND openalex_id = ? AND active = 1
 `
 
 type IsActiveCitedAuthorParams struct {
-	ResearcherID int64
+	ResearcherID string
 	OpenalexID   string
 }
 
@@ -98,7 +98,7 @@ ORDER BY citation_count DESC
 LIMIT 60
 `
 
-func (q *Queries) ListCitedAuthorsByResearcher(ctx context.Context, researcherID int64) ([]CitedAuthor, error) {
+func (q *Queries) ListCitedAuthorsByResearcher(ctx context.Context, researcherID string) ([]CitedAuthor, error) {
 	rows, err := q.db.QueryContext(ctx, listCitedAuthorsByResearcher, researcherID)
 	if err != nil {
 		return nil, err
@@ -136,7 +136,7 @@ SELECT openalex_id FROM cited_authors
 WHERE researcher_id = ? AND source = 'openalex_sync'
 `
 
-func (q *Queries) ListSyncedCitedAuthorIDs(ctx context.Context, researcherID int64) ([]string, error) {
+func (q *Queries) ListSyncedCitedAuthorIDs(ctx context.Context, researcherID string) ([]string, error) {
 	rows, err := q.db.QueryContext(ctx, listSyncedCitedAuthorIDs, researcherID)
 	if err != nil {
 		return nil, err
@@ -167,7 +167,7 @@ LIMIT ?
 `
 
 type ListTopActiveCitedAuthorsByResearcherParams struct {
-	ResearcherID int64
+	ResearcherID string
 	Limit        int64
 }
 
@@ -211,7 +211,7 @@ WHERE id = ? AND researcher_id = ?
 
 type ToggleCitedAuthorActiveParams struct {
 	ID           int64
-	ResearcherID int64
+	ResearcherID string
 }
 
 func (q *Queries) ToggleCitedAuthorActive(ctx context.Context, arg ToggleCitedAuthorActiveParams) error {
@@ -230,7 +230,7 @@ WHERE cited_authors.source = 'openalex_sync'
 `
 
 type UpsertSyncedCitedAuthorParams struct {
-	ResearcherID  int64
+	ResearcherID  string
 	OpenalexID    string
 	Name          string
 	Affiliation   string

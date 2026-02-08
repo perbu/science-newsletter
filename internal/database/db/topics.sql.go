@@ -13,7 +13,7 @@ const deleteLLMTopicsByResearcher = `-- name: DeleteLLMTopicsByResearcher :exec
 DELETE FROM topics WHERE researcher_id = ? AND source = 'llm'
 `
 
-func (q *Queries) DeleteLLMTopicsByResearcher(ctx context.Context, researcherID int64) error {
+func (q *Queries) DeleteLLMTopicsByResearcher(ctx context.Context, researcherID string) error {
 	_, err := q.db.ExecContext(ctx, deleteLLMTopicsByResearcher, researcherID)
 	return err
 }
@@ -22,7 +22,7 @@ const deleteOpenAlexTopicsByResearcher = `-- name: DeleteOpenAlexTopicsByResearc
 DELETE FROM topics WHERE researcher_id = ? AND source = 'openalex'
 `
 
-func (q *Queries) DeleteOpenAlexTopicsByResearcher(ctx context.Context, researcherID int64) error {
+func (q *Queries) DeleteOpenAlexTopicsByResearcher(ctx context.Context, researcherID string) error {
 	_, err := q.db.ExecContext(ctx, deleteOpenAlexTopicsByResearcher, researcherID)
 	return err
 }
@@ -33,7 +33,7 @@ DELETE FROM topics WHERE id = ? AND researcher_id = ?
 
 type DeleteTopicParams struct {
 	ID           int64
-	ResearcherID int64
+	ResearcherID string
 }
 
 func (q *Queries) DeleteTopic(ctx context.Context, arg DeleteTopicParams) error {
@@ -45,7 +45,7 @@ const deleteTopicsByResearcher = `-- name: DeleteTopicsByResearcher :exec
 DELETE FROM topics WHERE researcher_id = ?
 `
 
-func (q *Queries) DeleteTopicsByResearcher(ctx context.Context, researcherID int64) error {
+func (q *Queries) DeleteTopicsByResearcher(ctx context.Context, researcherID string) error {
 	_, err := q.db.ExecContext(ctx, deleteTopicsByResearcher, researcherID)
 	return err
 }
@@ -80,7 +80,7 @@ LIMIT ?
 `
 
 type ListTopTopicsByResearcherParams struct {
-	ResearcherID int64
+	ResearcherID string
 	Limit        int64
 }
 
@@ -124,7 +124,7 @@ WHERE researcher_id = ?
 ORDER BY score DESC
 `
 
-func (q *Queries) ListTopicsByResearcher(ctx context.Context, researcherID int64) ([]Topic, error) {
+func (q *Queries) ListTopicsByResearcher(ctx context.Context, researcherID string) ([]Topic, error) {
 	rows, err := q.db.QueryContext(ctx, listTopicsByResearcher, researcherID)
 	if err != nil {
 		return nil, err
@@ -165,7 +165,7 @@ UPDATE topics SET score = ?, source = 'manual' WHERE id = ? AND researcher_id = 
 type UpdateTopicScoreParams struct {
 	Score        float64
 	ID           int64
-	ResearcherID int64
+	ResearcherID string
 }
 
 func (q *Queries) UpdateTopicScore(ctx context.Context, arg UpdateTopicScoreParams) error {
@@ -186,7 +186,7 @@ ON CONFLICT(researcher_id, openalex_id) DO UPDATE SET
 `
 
 type UpsertTopicParams struct {
-	ResearcherID int64
+	ResearcherID string
 	OpenalexID   string
 	Name         string
 	Subfield     string

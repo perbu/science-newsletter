@@ -10,42 +10,42 @@ import (
 	"database/sql"
 )
 
+const deleteScannedWorksByMonth = `-- name: DeleteScannedWorksByMonth :exec
+DELETE FROM scanned_works WHERE researcher_id = ? AND scan_month = ?
+`
+
+type DeleteScannedWorksByMonthParams struct {
+	ResearcherID string
+	ScanMonth    string
+}
+
+func (q *Queries) DeleteScannedWorksByMonth(ctx context.Context, arg DeleteScannedWorksByMonthParams) error {
+	_, err := q.db.ExecContext(ctx, deleteScannedWorksByMonth, arg.ResearcherID, arg.ScanMonth)
+	return err
+}
+
 const deleteScannedWorksByResearcher = `-- name: DeleteScannedWorksByResearcher :exec
 DELETE FROM scanned_works WHERE researcher_id = ?
 `
 
-func (q *Queries) DeleteScannedWorksByResearcher(ctx context.Context, researcherID int64) error {
+func (q *Queries) DeleteScannedWorksByResearcher(ctx context.Context, researcherID string) error {
 	_, err := q.db.ExecContext(ctx, deleteScannedWorksByResearcher, researcherID)
 	return err
 }
 
-const deleteScannedWorksByWeek = `-- name: DeleteScannedWorksByWeek :exec
-DELETE FROM scanned_works WHERE researcher_id = ? AND scan_week = ?
-`
-
-type DeleteScannedWorksByWeekParams struct {
-	ResearcherID int64
-	ScanWeek     string
-}
-
-func (q *Queries) DeleteScannedWorksByWeek(ctx context.Context, arg DeleteScannedWorksByWeekParams) error {
-	_, err := q.db.ExecContext(ctx, deleteScannedWorksByWeek, arg.ResearcherID, arg.ScanWeek)
-	return err
-}
-
-const listScannedWorksByWeek = `-- name: ListScannedWorksByWeek :many
-SELECT id, researcher_id, scan_week, openalex_id, title, doi, publication_date, cited_by_count, abstract, authorships, topics, fetched_at, source_name, source_citedness FROM scanned_works
-WHERE researcher_id = ? AND scan_week = ?
+const listScannedWorksByMonth = `-- name: ListScannedWorksByMonth :many
+SELECT id, researcher_id, scan_month, openalex_id, title, doi, publication_date, cited_by_count, abstract, authorships, topics, fetched_at, source_name, source_citedness FROM scanned_works
+WHERE researcher_id = ? AND scan_month = ?
 ORDER BY cited_by_count DESC
 `
 
-type ListScannedWorksByWeekParams struct {
-	ResearcherID int64
-	ScanWeek     string
+type ListScannedWorksByMonthParams struct {
+	ResearcherID string
+	ScanMonth    string
 }
 
-func (q *Queries) ListScannedWorksByWeek(ctx context.Context, arg ListScannedWorksByWeekParams) ([]ScannedWork, error) {
-	rows, err := q.db.QueryContext(ctx, listScannedWorksByWeek, arg.ResearcherID, arg.ScanWeek)
+func (q *Queries) ListScannedWorksByMonth(ctx context.Context, arg ListScannedWorksByMonthParams) ([]ScannedWork, error) {
+	rows, err := q.db.QueryContext(ctx, listScannedWorksByMonth, arg.ResearcherID, arg.ScanMonth)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (q *Queries) ListScannedWorksByWeek(ctx context.Context, arg ListScannedWor
 		if err := rows.Scan(
 			&i.ID,
 			&i.ResearcherID,
-			&i.ScanWeek,
+			&i.ScanMonth,
 			&i.OpenalexID,
 			&i.Title,
 			&i.Doi,
@@ -83,9 +83,9 @@ func (q *Queries) ListScannedWorksByWeek(ctx context.Context, arg ListScannedWor
 }
 
 const upsertScannedWork = `-- name: UpsertScannedWork :exec
-INSERT INTO scanned_works (researcher_id, scan_week, openalex_id, title, doi, publication_date, cited_by_count, abstract, authorships, topics, source_name, source_citedness)
+INSERT INTO scanned_works (researcher_id, scan_month, openalex_id, title, doi, publication_date, cited_by_count, abstract, authorships, topics, source_name, source_citedness)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(researcher_id, openalex_id, scan_week) DO UPDATE SET
+ON CONFLICT(researcher_id, openalex_id, scan_month) DO UPDATE SET
     title = excluded.title,
     doi = excluded.doi,
     publication_date = excluded.publication_date,
@@ -99,8 +99,8 @@ ON CONFLICT(researcher_id, openalex_id, scan_week) DO UPDATE SET
 `
 
 type UpsertScannedWorkParams struct {
-	ResearcherID    int64
-	ScanWeek        string
+	ResearcherID    string
+	ScanMonth       string
 	OpenalexID      string
 	Title           string
 	Doi             sql.NullString
@@ -116,7 +116,7 @@ type UpsertScannedWorkParams struct {
 func (q *Queries) UpsertScannedWork(ctx context.Context, arg UpsertScannedWorkParams) error {
 	_, err := q.db.ExecContext(ctx, upsertScannedWork,
 		arg.ResearcherID,
-		arg.ScanWeek,
+		arg.ScanMonth,
 		arg.OpenalexID,
 		arg.Title,
 		arg.Doi,

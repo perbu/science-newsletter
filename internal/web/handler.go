@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/perbu/science-newsletter/internal/agent"
 	"github.com/perbu/science-newsletter/internal/config"
 	"github.com/perbu/science-newsletter/internal/database/db"
@@ -109,6 +110,7 @@ func (h *Handler) CreateResearcher(w http.ResponseWriter, r *http.Request) {
 	name := r.FormValue("name")
 	openalexID := r.FormValue("openalex_id")
 	_, err := h.queries.CreateResearcher(r.Context(), db.CreateResearcherParams{
+		ID:                 uuid.New().String(),
 		OpenalexID:         openalexID,
 		Name:               name,
 		Affiliation:        r.FormValue("affiliation"),
@@ -215,9 +217,9 @@ func (h *Handler) FetchWorks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	weekStr := scanner.WeekStart(time.Now()).Format("2006-01-02")
-	slog.Info("works fetched", "researcher_id", id, "count", count, "week", weekStr)
-	fmt.Fprintf(w, `<span class="text-green-600">Fetched %d papers for week %s. Ready to analyze.</span>`, count, weekStr)
+	monthStr := scanner.MonthStart(time.Now()).AddDate(0, -1, 0).Format("2006-01")
+	slog.Info("works fetched", "researcher_id", id, "count", count, "month", monthStr)
+	fmt.Fprintf(w, `<span class="text-green-600">Fetched %d papers for %s. Ready to analyze.</span>`, count, monthStr)
 }
 
 func (h *Handler) AnalyzeScan(w http.ResponseWriter, r *http.Request) {
@@ -234,48 +236,65 @@ func (h *Handler) AnalyzeScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if researcher.ResearchInterests == "" {
+		fmt.Fprint(w, `<span class="text-red-600">Please set research interests before analyzing.</span>`)
+		return
+	}
+
 	run, err := h.queries.CreateNewsletterRun(ctx, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	weekStart := scanner.WeekStart(time.Now())
-	candidates, err := h.scanner.AnalyzeWorks(ctx, id, weekStart)
+	papers, err := h.scanner.LoadCachedWorks(ctx, id)
+	if err != nil {
+		h.failRun(ctx, run.ID, err)
+		fmt.Fprintf(w, `<span class="text-red-600">Loading cached works failed: %s</span>`, err)
+		return
+	}
+
+	if len(papers) == 0 {
+		_ = h.queries.UpdateNewsletterRun(ctx, db.UpdateNewsletterRunParams{
+			ID:     run.ID,
+			Status: "completed",
+		})
+		fmt.Fprint(w, `<span class="text-yellow-600">No cached papers found. Fetch papers first.</span>`)
+		return
+	}
+
+	results, err := h.enricher.FilterAndEnrich(ctx, papers, researcher.Name, researcher.ResearchInterests)
 	if err != nil {
 		h.failRun(ctx, run.ID, err)
 		fmt.Fprintf(w, `<span class="text-red-600">Analysis failed: %s</span>`, err)
 		return
 	}
 
-	if len(candidates) == 0 {
+	if len(results) == 0 {
 		_ = h.queries.UpdateNewsletterRun(ctx, db.UpdateNewsletterRunParams{
 			ID:     run.ID,
 			Status: "completed",
 		})
-		fmt.Fprint(w, `<span class="text-yellow-600">No papers above threshold. Try fetching first or lowering the threshold.</span>`)
+		fmt.Fprint(w, `<span class="text-yellow-600">No papers deemed relevant by LLM filter. Try adjusting research interests.</span>`)
 		return
 	}
 
-	topicNames := h.getTopicNames(ctx, id)
-	summaries := h.enricher.EnrichAll(ctx, candidates, researcher.Name, topicNames)
-
-	for _, c := range candidates {
+	for _, r := range results {
 		isCitedAuthor := int64(0)
-		if c.IsCitedAuthor {
+		if r.Paper.IsCitedAuthor {
 			isCitedAuthor = 1
 		}
 		_ = h.queries.CreateNewsletterItem(ctx, db.CreateNewsletterItemParams{
 			NewsletterRunID:    run.ID,
-			OpenalexID:         c.Work.ID,
-			Title:              c.Work.Title,
-			Authors:            scanner.AuthorNames(c.Work),
-			PublicationDate:    c.Work.PublicationDate,
-			Doi:                c.Work.DOI,
-			RelevancyScore:     c.RelevancyScore,
-			Summary:            summaries[c.Work.ID],
+			OpenalexID:         r.Paper.Work.ID,
+			Title:              r.Paper.Work.Title,
+			Authors:            scanner.AuthorNames(r.Paper.Work),
+			PublicationDate:    r.Paper.Work.PublicationDate,
+			Doi:                r.Paper.Work.DOI,
+			RelevancyScore:     r.Paper.RelevancyScore,
+			Summary:            r.Summary,
 			IsCitedAuthorPaper: isCitedAuthor,
-			CitedAuthorName:    c.CitedAuthorName,
+			CitedAuthorName:    r.Paper.CitedAuthorName,
 		})
 	}
 
@@ -290,17 +309,17 @@ func (h *Handler) AnalyzeScan(w http.ResponseWriter, r *http.Request) {
 	_ = h.queries.UpdateNewsletterRun(ctx, db.UpdateNewsletterRunParams{
 		ID:             run.ID,
 		Status:         "completed",
-		PapersFound:    int64(len(candidates)),
+		PapersFound:    int64(len(papers)),
 		PapersIncluded: int64(len(items)),
 		HtmlContent:    html,
 	})
 
-	fmt.Fprintf(w, `<span class="text-green-600">Newsletter ready! %d papers included. <a href="/newsletters/%d" class="underline">View newsletter</a></span>`,
-		len(items), run.ID)
+	fmt.Fprintf(w, `<span class="text-green-600">Newsletter ready! %d papers included (from %d candidates). <a href="/newsletters/%d" class="underline">View newsletter</a></span>`,
+		len(items), len(papers), run.ID)
 }
 
 func (h *Handler) ViewNewsletter(w http.ResponseWriter, r *http.Request) {
-	id, err := parseID(r)
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -348,7 +367,7 @@ func (h *Handler) failRun(ctx context.Context, runID int64, runErr error) {
 	slog.Error("scan run failed", "run_id", runID, "err", runErr)
 }
 
-func (h *Handler) getTopicNames(ctx context.Context, researcherID int64) []string {
+func (h *Handler) getTopicNames(ctx context.Context, researcherID string) []string {
 	topics, err := h.queries.ListTopTopicsByResearcher(ctx, db.ListTopTopicsByResearcherParams{
 		ResearcherID: researcherID,
 		Limit:        int64(h.cfg.Scanner.MaxTopics),
@@ -649,7 +668,7 @@ func (h *Handler) DeleteCitedAuthor(w http.ResponseWriter, r *http.Request) {
 	h.renderCitedAuthorsSection(w, r.Context(), researcherID)
 }
 
-func (h *Handler) renderCitedAuthorsSection(w http.ResponseWriter, ctx context.Context, researcherID int64) {
+func (h *Handler) renderCitedAuthorsSection(w http.ResponseWriter, ctx context.Context, researcherID string) {
 	citedAuthors, err := h.queries.ListCitedAuthorsByResearcher(ctx, researcherID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -661,7 +680,10 @@ func (h *Handler) renderCitedAuthorsSection(w http.ResponseWriter, ctx context.C
 	})
 }
 
-func parseID(r *http.Request) (int64, error) {
+func parseID(r *http.Request) (string, error) {
 	idStr := r.PathValue("id")
-	return strconv.ParseInt(idStr, 10, 64)
+	if _, err := uuid.Parse(idStr); err != nil {
+		return "", fmt.Errorf("invalid ID: %w", err)
+	}
+	return idStr, nil
 }

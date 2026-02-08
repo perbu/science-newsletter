@@ -10,12 +10,13 @@ import (
 )
 
 const createResearcher = `-- name: CreateResearcher :one
-INSERT INTO researchers (openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO researchers (id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at, research_interests
 `
 
 type CreateResearcherParams struct {
+	ID                 string
 	OpenalexID         string
 	Name               string
 	Affiliation        string
@@ -27,6 +28,7 @@ type CreateResearcherParams struct {
 
 func (q *Queries) CreateResearcher(ctx context.Context, arg CreateResearcherParams) (Researcher, error) {
 	row := q.db.QueryRowContext(ctx, createResearcher,
+		arg.ID,
 		arg.OpenalexID,
 		arg.Name,
 		arg.Affiliation,
@@ -56,7 +58,7 @@ const deleteResearcher = `-- name: DeleteResearcher :exec
 DELETE FROM researchers WHERE id = ?
 `
 
-func (q *Queries) DeleteResearcher(ctx context.Context, id int64) error {
+func (q *Queries) DeleteResearcher(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, deleteResearcher, id)
 	return err
 }
@@ -65,7 +67,7 @@ const getResearcher = `-- name: GetResearcher :one
 SELECT id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at, research_interests FROM researchers WHERE id = ? LIMIT 1
 `
 
-func (q *Queries) GetResearcher(ctx context.Context, id int64) (Researcher, error) {
+func (q *Queries) GetResearcher(ctx context.Context, id string) (Researcher, error) {
 	row := q.db.QueryRowContext(ctx, getResearcher, id)
 	var i Researcher
 	err := row.Scan(
@@ -152,7 +154,7 @@ UPDATE researchers SET research_interests = ? WHERE id = ?
 
 type UpdateResearcherInterestsParams struct {
 	ResearchInterests string
-	ID                int64
+	ID                string
 }
 
 func (q *Queries) UpdateResearcherInterests(ctx context.Context, arg UpdateResearcherInterestsParams) error {
@@ -172,7 +174,7 @@ type UpdateResearcherStatsParams struct {
 	HIndex       int64
 	WorksCount   int64
 	CitedByCount int64
-	ID           int64
+	ID           string
 }
 
 func (q *Queries) UpdateResearcherStats(ctx context.Context, arg UpdateResearcherStatsParams) error {
@@ -193,7 +195,7 @@ UPDATE researchers SET relevancy_threshold = ? WHERE id = ?
 
 type UpdateResearcherThresholdParams struct {
 	RelevancyThreshold float64
-	ID                 int64
+	ID                 string
 }
 
 func (q *Queries) UpdateResearcherThreshold(ctx context.Context, arg UpdateResearcherThresholdParams) error {

@@ -8,8 +8,8 @@ SELECT * FROM researchers WHERE openalex_id = ? LIMIT 1;
 SELECT * FROM researchers ORDER BY name;
 
 -- name: CreateResearcher :one
-INSERT INTO researchers (openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO researchers (id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: UpdateResearcherStats :exec

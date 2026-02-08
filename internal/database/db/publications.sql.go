@@ -13,7 +13,7 @@ const countPublicationsByResearcher = `-- name: CountPublicationsByResearcher :o
 SELECT COUNT(*) FROM publications WHERE researcher_id = ?
 `
 
-func (q *Queries) CountPublicationsByResearcher(ctx context.Context, researcherID int64) (int64, error) {
+func (q *Queries) CountPublicationsByResearcher(ctx context.Context, researcherID string) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countPublicationsByResearcher, researcherID)
 	var count int64
 	err := row.Scan(&count)
@@ -28,7 +28,7 @@ LIMIT ?
 `
 
 type ListPublicationsByResearcherParams struct {
-	ResearcherID int64
+	ResearcherID string
 	Limit        int64
 }
 
@@ -74,7 +74,7 @@ ON CONFLICT(openalex_id) DO UPDATE SET
 
 type UpsertPublicationParams struct {
 	OpenalexID      string
-	ResearcherID    int64
+	ResearcherID    string
 	Title           string
 	PublicationDate string
 	Doi             string
