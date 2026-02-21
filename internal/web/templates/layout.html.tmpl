@@ -12,6 +12,14 @@
     <nav class="bg-indigo-700 text-white px-6 py-4">
         <div class="max-w-4xl mx-auto flex items-center justify-between">
             <a href="/" class="text-xl font-bold">Science Newsletter</a>
+            {{if .AuthEmail}}
+            <div class="flex items-center gap-4">
+                <span class="text-indigo-200 text-sm">{{.AuthEmail}}</span>
+                <form method="POST" action="/logout" class="inline">
+                    <button type="submit" class="text-sm bg-indigo-600 hover:bg-indigo-500 px-3 py-1 rounded">Sign out</button>
+                </form>
+            </div>
+            {{end}}
         </div>
     </nav>
     <main class="max-w-4xl mx-auto px-6 py-8">

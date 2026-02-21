@@ -16,6 +16,15 @@ type Config struct {
 	Agent    AgentConfig    `yaml:"agent"`
 	Scanner  ScannerConfig  `yaml:"scanner"`
 	Resend   ResendConfig   `yaml:"resend"`
+	Auth     AuthConfig     `yaml:"auth"`
+}
+
+type AuthConfig struct {
+	AllowedEmails []string `yaml:"allowed_emails"`
+	TokenExpiry   int      `yaml:"token_expiry"`
+	SessionMaxAge int      `yaml:"session_max_age"`
+	CookieSecure  bool     `yaml:"cookie_secure"`
+	BaseURL       string   `yaml:"base_url"`
 }
 
 type ServerConfig struct {
@@ -72,6 +81,11 @@ func Load(path string) (*Config, error) {
 		},
 		Gemini: GeminiConfig{
 			Model: "gemini-2.5-flash",
+		},
+		Auth: AuthConfig{
+			TokenExpiry:   15,
+			SessionMaxAge: 720,
+			BaseURL:       "http://localhost:8080",
 		},
 	}
 

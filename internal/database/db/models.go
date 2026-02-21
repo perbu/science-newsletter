@@ -9,6 +9,15 @@ import (
 	"time"
 )
 
+type AuthToken struct {
+	ID        int64
+	Token     string
+	Email     string
+	ExpiresAt time.Time
+	UsedAt    sql.NullTime
+	CreatedAt time.Time
+}
+
 type CitedAuthor struct {
 	ID            int64
 	ResearcherID  string
@@ -47,22 +56,6 @@ type NewsletterRun struct {
 	CompletedAt    sql.NullTime
 }
 
-type OpenalexTopic struct {
-	ID           int64
-	OpenalexID   string
-	DisplayName  string
-	Description  string
-	Keywords     string
-	SubfieldID   string
-	SubfieldName string
-	FieldID      string
-	FieldName    string
-	DomainID     string
-	DomainName   string
-	WorksCount   int64
-	UpdatedAt    time.Time
-}
-
 type Publication struct {
 	ID              int64
 	OpenalexID      string
@@ -88,14 +81,6 @@ type Researcher struct {
 	ResearchInterests  string
 }
 
-type ResearcherFieldSelection struct {
-	ID           int64
-	ResearcherID string
-	Level        string
-	OpenalexID   string
-	DisplayName  string
-}
-
 type ScannedWork struct {
 	ID              int64
 	ResearcherID    string
@@ -111,6 +96,14 @@ type ScannedWork struct {
 	FetchedAt       sql.NullTime
 	SourceName      string
 	SourceCitedness float64
+}
+
+type Session struct {
+	ID        int64
+	Token     string
+	Email     string
+	ExpiresAt time.Time
+	CreatedAt time.Time
 }
 
 type Topic struct {

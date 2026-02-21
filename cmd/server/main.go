@@ -1,15 +1,18 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	_ "modernc.org/sqlite"
 
 	"github.com/perbu/science-newsletter/internal/agent"
+	"github.com/perbu/science-newsletter/internal/auth"
 	"github.com/perbu/science-newsletter/internal/config"
 	"github.com/perbu/science-newsletter/internal/database"
 	"github.com/perbu/science-newsletter/internal/database/db"
@@ -94,7 +97,19 @@ func run() error {
 	mux := http.NewServeMux()
 	web.SetupRoutes(mux, handler)
 
+	// Wrap with auth middleware
+	var root http.Handler = mux
+	if len(cfg.Auth.AllowedEmails) > 0 {
+		root = auth.Middleware(queries, cfg.Auth, mux)
+		slog.Info("auth enabled", "allowed_emails", len(cfg.Auth.AllowedEmails))
+	} else {
+		slog.Info("auth disabled (no allowed_emails configured)")
+	}
+
+	// Start periodic cleanup of expired tokens and sessions
+	auth.StartCleanup(context.Background(), queries, 1*time.Hour)
+
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	slog.Info("starting server", "addr", addr)
-	return http.ListenAndServe(addr, mux)
+	return http.ListenAndServe(addr, root)
 }
