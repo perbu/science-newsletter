@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/perbu/science-newsletter/internal/agent"
+	"github.com/perbu/science-newsletter/internal/auth"
 	"github.com/perbu/science-newsletter/internal/config"
 	"github.com/perbu/science-newsletter/internal/database/db"
 	"github.com/perbu/science-newsletter/internal/email"
@@ -51,6 +52,8 @@ func NewHandler(
 		"researcher_new.html.tmpl",
 		"researcher_detail.html.tmpl",
 		"newsletter_view.html.tmpl",
+		"login.html.tmpl",
+		"check_email.html.tmpl",
 	}
 	pages := make(map[string]*template.Template, len(pageFiles))
 	for _, pf := range pageFiles {
@@ -80,11 +83,11 @@ func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	h.renderPage(w, "index.html.tmpl", map[string]any{"Researchers": researchers})
+	h.renderPage(w, r, "index.html.tmpl", map[string]any{"Researchers": researchers})
 }
 
 func (h *Handler) NewResearcher(w http.ResponseWriter, r *http.Request) {
-	h.renderPage(w, "researcher_new.html.tmpl", nil)
+	h.renderPage(w, r, "researcher_new.html.tmpl", nil)
 }
 
 func (h *Handler) SearchResearchers(w http.ResponseWriter, r *http.Request) {
@@ -161,7 +164,7 @@ func (h *Handler) ResearcherDetail(w http.ResponseWriter, r *http.Request) {
 		Limit:        20,
 	})
 
-	h.renderPage(w, "researcher_detail.html.tmpl", map[string]any{
+	h.renderPage(w, r, "researcher_detail.html.tmpl", map[string]any{
 		"Researcher":   researcher,
 		"CitedAuthors": citedAuthors,
 		"Newsletters":  newsletters,
@@ -344,20 +347,30 @@ func (h *Handler) ViewNewsletter(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Newsletter not found", http.StatusNotFound)
 		return
 	}
-	h.renderPage(w, "newsletter_view.html.tmpl", map[string]any{
+	h.renderPage(w, r, "newsletter_view.html.tmpl", map[string]any{
 		"ResearcherID": run.ResearcherID,
 		"HTMLContent":  template.HTML(run.HtmlContent),
 	})
 }
 
-func (h *Handler) renderPage(w http.ResponseWriter, page string, data any) {
+func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, page string, data any) {
 	t, ok := h.pages[page]
 	if !ok {
 		http.Error(w, "template not found: "+page, http.StatusInternalServerError)
 		return
 	}
+
+	// Inject AuthEmail from context into template data
+	m, _ := data.(map[string]any)
+	if m == nil {
+		m = make(map[string]any)
+	}
+	if email := auth.EmailFromContext(r.Context()); email != "" {
+		m["AuthEmail"] = email
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := t.ExecuteTemplate(w, "layout", data); err != nil {
+	if err := t.ExecuteTemplate(w, "layout", m); err != nil {
 		slog.Error("render page", "page", page, "err", err)
 	}
 }
@@ -382,21 +395,6 @@ func (h *Handler) failRun(ctx context.Context, runID int64, runErr error) {
 	slog.Error("scan run failed", "run_id", runID, "err", runErr)
 }
 
-func (h *Handler) getTopicNames(ctx context.Context, researcherID string) []string {
-	topics, err := h.queries.ListTopTopicsByResearcher(ctx, db.ListTopTopicsByResearcherParams{
-		ResearcherID: researcherID,
-		Limit:        int64(h.cfg.Scanner.MaxTopics),
-	})
-	if err != nil {
-		return nil
-	}
-	names := make([]string, len(topics))
-	for i, t := range topics {
-		names[i] = t.Name
-	}
-	return names
-}
-
 func (h *Handler) UpdateResearchInterests(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r)
 	if err != nil {
@@ -413,183 +411,6 @@ func (h *Handler) UpdateResearchInterests(w http.ResponseWriter, r *http.Request
 	}
 	slog.Info("research interests updated", "researcher_id", id, "length", len(interests))
 	fmt.Fprint(w, `<span class="text-green-600">Interests saved.</span>`)
-}
-
-type SubfieldItem struct {
-	SubfieldID   string
-	SubfieldName string
-	Selected     bool
-}
-
-type FieldItem struct {
-	FieldID   string
-	FieldName string
-	Selected  bool
-	Subfields []SubfieldItem
-}
-
-type DomainGroup struct {
-	DomainID   string
-	DomainName string
-	Fields     []FieldItem
-}
-
-func (h *Handler) ListFields(w http.ResponseWriter, r *http.Request) {
-	researcherID, err := parseID(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	ctx := r.Context()
-
-	fields, err := h.queries.ListDistinctFields(ctx)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	selections, err := h.queries.ListFieldSelectionsByResearcher(ctx, researcherID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	selectedSet := make(map[string]bool)
-	for _, s := range selections {
-		selectedSet[s.Level+":"+s.OpenalexID] = true
-	}
-
-	domainMap := make(map[string]*DomainGroup)
-	var domainOrder []string
-	for _, f := range fields {
-		dg, ok := domainMap[f.DomainID]
-		if !ok {
-			dg = &DomainGroup{DomainID: f.DomainID, DomainName: f.DomainName}
-			domainMap[f.DomainID] = dg
-			domainOrder = append(domainOrder, f.DomainID)
-		}
-
-		fieldSelected := selectedSet["field:"+f.FieldID]
-
-		subfields, _ := h.queries.ListDistinctSubfieldsByField(ctx, f.FieldID)
-		var sfItems []SubfieldItem
-		for _, sf := range subfields {
-			sfItems = append(sfItems, SubfieldItem{
-				SubfieldID:   sf.SubfieldID,
-				SubfieldName: sf.SubfieldName,
-				Selected:     selectedSet["subfield:"+sf.SubfieldID],
-			})
-		}
-
-		dg.Fields = append(dg.Fields, FieldItem{
-			FieldID:   f.FieldID,
-			FieldName: f.FieldName,
-			Selected:  fieldSelected,
-			Subfields: sfItems,
-		})
-	}
-
-	var domains []DomainGroup
-	for _, did := range domainOrder {
-		domains = append(domains, *domainMap[did])
-	}
-
-	topicCount, _ := h.queries.CountOpenAlexTopics(ctx)
-
-	h.renderFragment(w, "field_selection.html.tmpl", map[string]any{
-		"ResearcherID": researcherID,
-		"Domains":      domains,
-		"Selections":   selections,
-		"TopicCount":   topicCount,
-	})
-}
-
-func (h *Handler) ToggleFieldSelection(w http.ResponseWriter, r *http.Request) {
-	researcherID, err := parseID(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	action := r.FormValue("action") // "add" or "remove"
-	level := r.FormValue("level")   // "field" or "subfield"
-	openalexID := r.FormValue("openalex_id")
-	displayName := r.FormValue("display_name")
-
-	ctx := r.Context()
-
-	if action == "remove" {
-		err = h.queries.DeleteFieldSelection(ctx, db.DeleteFieldSelectionParams{
-			ResearcherID: researcherID,
-			Level:        level,
-			OpenalexID:   openalexID,
-		})
-	} else {
-		err = h.queries.UpsertFieldSelection(ctx, db.UpsertFieldSelectionParams{
-			ResearcherID: researcherID,
-			Level:        level,
-			OpenalexID:   openalexID,
-			DisplayName:  displayName,
-		})
-	}
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	slog.Info("field selection toggled", "researcher_id", researcherID, "action", action, "level", level, "id", openalexID)
-
-	// Re-render the field selection panel
-	h.ListFields(w, r)
-}
-
-func (h *Handler) SearchSubfields(w http.ResponseWriter, r *http.Request) {
-	researcherID, err := parseID(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	query := r.FormValue("query")
-	if len(query) < 2 {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	results, err := h.queries.SearchSubfieldsByName(r.Context(), "%"+query+"%")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Check which are already selected
-	selections, _ := h.queries.ListFieldSelectionsByResearcher(r.Context(), researcherID)
-	selectedSet := make(map[string]bool)
-	for _, s := range selections {
-		selectedSet[s.Level+":"+s.OpenalexID] = true
-	}
-
-	type result struct {
-		SubfieldID   string
-		SubfieldName string
-		FieldName    string
-		DomainName   string
-		Selected     bool
-	}
-	var items []result
-	for _, r := range results {
-		items = append(items, result{
-			SubfieldID:   r.SubfieldID,
-			SubfieldName: r.SubfieldName,
-			FieldName:    r.FieldName,
-			DomainName:   r.DomainName,
-			Selected:     selectedSet["subfield:"+r.SubfieldID],
-		})
-	}
-
-	h.renderFragment(w, "subfield_search_results.html.tmpl", map[string]any{
-		"Results":      items,
-		"ResearcherID": researcherID,
-	})
 }
 
 func (h *Handler) SearchCitedAuthors(w http.ResponseWriter, r *http.Request) {

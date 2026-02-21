@@ -80,32 +80,6 @@
 </div>
 
 <div class="bg-white rounded-lg shadow p-6 mb-6">
-    <h2 class="text-lg font-bold text-gray-800 mb-3">Search Scope</h2>
-    <p class="text-sm text-gray-500 mb-3">Search for subfields to define which areas to fetch papers from. These are used directly when querying OpenAlex.</p>
-
-    <div class="mb-3">
-        <input type="text" name="query" placeholder="Search subfields (e.g. Education, Psychology, Linguistics)..."
-            hx-post="/researchers/{{.Researcher.ID}}/subfields/search"
-            hx-trigger="input changed delay:300ms, keyup[key=='Enter']"
-            hx-target="#subfield-search-results"
-            hx-indicator="#subfield-search-spinner"
-            class="border border-gray-300 rounded px-3 py-2 text-sm w-full">
-        <span id="subfield-search-spinner" class="htmx-indicator text-sm text-gray-400">Searching...</span>
-        <div id="subfield-search-results" class="mt-2"></div>
-    </div>
-
-    <details class="border border-gray-200 rounded">
-        <summary class="px-3 py-2 bg-gray-50 cursor-pointer text-sm text-gray-500">Browse all fields &amp; subfields</summary>
-        <div class="p-3" id="field-selection-panel"
-            hx-get="/researchers/{{.Researcher.ID}}/fields"
-            hx-trigger="intersect once"
-            hx-swap="innerHTML">
-            <span class="text-sm text-gray-400">Loading fields...</span>
-        </div>
-    </details>
-</div>
-
-<div class="bg-white rounded-lg shadow p-6 mb-6">
     <h2 class="text-lg font-bold text-gray-800 mb-3">Cited Authors</h2>
     <p class="text-sm text-gray-500 mb-3">The top 60 most-cited authors from this researcher's recent publications (last 5 years). During paper fetching, new works by active authors are retrieved from OpenAlex. During analysis, papers by active authors bypass the relevancy threshold. Toggle authors off to exclude them, or search below to add authors manually.</p>
 

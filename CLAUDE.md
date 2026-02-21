@@ -68,7 +68,7 @@ Environment variables override config.yaml values. The `.env` file is loaded bef
 ## Database
 
 SQLite with WAL mode and foreign keys enabled. Schema managed by goose migrations in `internal/database/migrations/`.
-Tables: `researchers`, `publications`, `cited_authors`, `topics`, `scanned_works`, `newsletter_runs`, `newsletter_items`.
+Tables: `researchers`, `publications`, `cited_authors`, `topics`, `scanned_works`, `newsletter_runs`, `newsletter_items`, `auth_sessions`.
 
 After editing `internal/database/queries/*.sql`, run `go tool sqlc generate`. Never edit files in
 `internal/database/db/` — they are generated.
@@ -79,11 +79,8 @@ The scanner is split into two independent phases so you can re-analyze cached da
 
 ### Fetch phase (`POST /researchers/{id}/fetch`)
 
-1. Check the researcher's **field/subfield selections** (`researcher_field_selections` table)
-2. If selections exist: resolve to subfield IDs (expanding field-level selections) and query OpenAlex with
-   `topics.subfield.id:SF1|SF2,from_publication_date:YYYY-MM-DD`
-3. If no selections exist: fall back to topic-based search using researcher's `topics` table
-4. Also search for recent works by top cited authors (from `cited_authors` table)
+1. Search for recent papers using the researcher's `topics` table
+2. Also search for recent works by top cited authors (from `cited_authors` table)
 5. Deduplicate, reconstruct abstracts from inverted index, marshal authorships/topics to JSON
 6. Upsert all works into `scanned_works` table, keyed by `(researcher_id, openalex_id, scan_month)`
 
@@ -100,27 +97,10 @@ can run on the 1st of the month and get a complete period. The `scan_month` colu
 (e.g. `"2026-01"`). Re-fetching the same month refreshes the cached data. Re-analyzing re-scores and re-enriches
 without hitting OpenAlex.
 
-### Open questions
-
-The fetch phase now casts a wider net via subfields, but the analyze phase still scores against the researcher's
-`topics` table (populated by OpenAlex profile sync). This means filtering precision depends on having good topics.
-How to best fetch and filter/score papers is an active area of exploration.
-
 ## Logging
 
 Uses `log/slog` throughout. Set `LOG_LEVEL=debug` in `.env` for verbose output including per-paper scoring, OpenAlex
 request timing, and Gemini token usage. Default level is `info`.
-
-## Search Scope UI
-
-The researcher detail page has a "Search Scope" section where the user selects OpenAlex subfields to search. This
-drives the fetch phase directly — selected subfields become the `topics.subfield.id` filter in OpenAlex queries.
-
-- **Subfield search box**: type-ahead search over `openalex_topics` subfield names (LIKE query, 300ms debounce)
-- **Browse hierarchy**: collapsible Domain > Field > Subfield tree (lazy-loaded on open)
-- Selections stored in `researcher_field_selections` table with `level` ("field" or "subfield") and `openalex_id`
-- Topic management UI was removed — topics come from OpenAlex profile sync only and are used for scoring in the
-  analyze phase
 
 ## Primary User's Research Interests
 
@@ -153,9 +133,6 @@ journalctl --user -u science-newsletter -f      # tail logs
 - **Template rendering**: Go's `html/template` with the layout+page pattern. Each page template is parsed together with
   `layout.html.tmpl` individually to avoid `{{define "content"}}` collisions.
 - **No JSON API**: The frontend is pure HTMX — server returns HTML fragments. No separate API layer.
-- **Subfield-based search**: Fetch phase queries OpenAlex by subfield IDs from the researcher's field selections,
-  not individual topics. This gives broader coverage at the cost of precision — filtering is deferred to the analyze
-  phase.
 - **Fetch/analyze split**: OpenAlex fetching and scoring/enrichment are separate phases. Fetched works are cached in
   `scanned_works` with JSON columns for authorships and topics. This allows threshold tweaks and prompt changes without
   re-fetching hundreds of papers from OpenAlex.
