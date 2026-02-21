@@ -134,6 +134,18 @@ OpenAlex topics. Key sub-areas:
 Her interests span multiple OpenAlex subfields (primarily Education within Social Sciences) and don't have direct
 one-to-one representations in the taxonomy.
 
+## Deployment
+
+Runs as a systemd user service (`~/.config/systemd/user/science-newsletter.service`). Linger is enabled so it starts
+at boot without a login session.
+
+```bash
+go build -o science-newsletter ./cmd/server/   # rebuild binary
+systemctl --user restart science-newsletter     # restart after rebuild
+systemctl --user status science-newsletter      # check status
+journalctl --user -u science-newsletter -f      # tail logs
+```
+
 ## Architecture Decisions
 
 - **genai directly, not ADK**: The Google ADK framework is designed for conversational agent servers with

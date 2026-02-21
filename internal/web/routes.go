@@ -13,6 +13,7 @@ func SetupRoutes(mux *http.ServeMux, h *Handler) {
 	mux.HandleFunc("POST /researchers/{id}/sync", h.SyncResearcher)
 	mux.HandleFunc("POST /researchers/{id}/fetch", h.FetchWorks)
 	mux.HandleFunc("POST /researchers/{id}/analyze", h.AnalyzeScan)
+	mux.HandleFunc("GET /researchers/{id}/jobs/{type}", h.JobStatusHandler)
 	mux.HandleFunc("GET /newsletters/{id}", h.ViewNewsletter)
 	mux.HandleFunc("PUT /researchers/{id}/interests", h.UpdateResearchInterests)
 	mux.HandleFunc("GET /researchers/{id}/fields", h.ListFields)
