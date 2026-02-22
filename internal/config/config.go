@@ -62,8 +62,8 @@ type ResendConfig struct {
 	From   string `yaml:"from"`
 }
 
-func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+func Load(configPath, promptsPath string) (*Config, error) {
+	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
@@ -92,6 +92,15 @@ func Load(path string) (*Config, error) {
 
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
+	}
+
+	// Load prompts file (overwrites only fields present in the YAML)
+	promptsData, err := os.ReadFile(promptsPath)
+	if err != nil {
+		return nil, fmt.Errorf("read prompts: %w", err)
+	}
+	if err := yaml.Unmarshal(promptsData, cfg); err != nil {
+		return nil, fmt.Errorf("parse prompts: %w", err)
 	}
 
 	// Load .env file (does not overwrite existing env vars)

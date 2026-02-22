@@ -1,4 +1,5 @@
 .env
+config.yaml
 /science-newsletter.db*
 .idea
 science-newsletter

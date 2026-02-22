@@ -34,7 +34,7 @@ func main() {
 
 func run() error {
 	// Load config first (this also reads .env)
-	cfg, err := config.Load("config.yaml")
+	cfg, err := config.Load("config.yaml", "prompts.yaml")
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}

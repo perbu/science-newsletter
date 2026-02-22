@@ -56,7 +56,12 @@ go vet ./...                      # lint
 
 ## Configuration
 
-`config.yaml` has all settings. Secrets go in `.env` (not committed):
+Configuration is split across three files:
+
+- **`config.yaml`** — local settings and PII (email allowlists, API keys). **Not committed to git.** Copy
+  `config.example.yaml` as a starting template.
+- **`prompts.yaml`** — agent/LLM prompts (committed to git, no PII).
+- **`.env`** — secrets (API keys). Not committed.
 
 ```
 GEMINI_API_KEY=...
@@ -66,6 +71,7 @@ RESEND_API_KEY=...
 LOG_LEVEL=debug
 ```
 
+The config loader reads `config.yaml` first, then `prompts.yaml` (which overwrites only the `agent:` fields).
 Environment variables override config.yaml values. The `.env` file is loaded before env var overrides are applied.
 
 ## Database

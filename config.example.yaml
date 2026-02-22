@@ -1,0 +1,37 @@
+# Science Newsletter configuration
+# Copy this file to config.yaml and fill in your values.
+# Secrets (API keys) can also go in .env — see .env example below.
+# Prompts live in prompts.yaml (committed separately).
+
+server:
+  port: 8080
+  database_path: ./science-newsletter.db
+
+openalex:
+  email: ""      # your email for OpenAlex polite pool
+  api_key: ""    # or via OPENALEX_API_KEY env var
+
+gemini:
+  api_key: ""    # or via GEMINI_API_KEY env var
+  model: gemini-3-flash-preview
+
+scanner:
+  default_threshold: 0.5
+  max_topics: 10
+  max_cited_authors: 50
+  lookback_days: 30
+  impact_weight: 0.3
+
+resend:
+  api_key: ""    # or via RESEND_API_KEY env var
+  from: "newsletter@example.com"
+
+auth:
+  allowed_emails:   # list of emails permitted to sign in
+    - user@example.com
+  admin_emails:     # admins get system-wide management UI
+    - admin@example.com
+  token_expiry: 15    # magic link validity in minutes
+  session_max_age: 720 # session duration in hours (30 days)
+  cookie_secure: false # set true if serving over HTTPS
+  base_url: "http://localhost:8080"
