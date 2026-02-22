@@ -1,0 +1,55 @@
+{{define "content"}}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold text-gray-900">Newsletter Runs</h1>
+        <a href="/admin" class="text-sm text-indigo-600 hover:text-indigo-800">Back to Dashboard</a>
+    </div>
+
+    <div class="bg-white rounded-lg shadow p-6">
+        {{if .Runs}}
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b text-left text-gray-500">
+                        <th class="pb-2 pr-4">ID</th>
+                        <th class="pb-2 pr-4">Researcher</th>
+                        <th class="pb-2 pr-4">Status</th>
+                        <th class="pb-2 pr-4 text-center">Papers Found</th>
+                        <th class="pb-2 pr-4 text-center">Included</th>
+                        <th class="pb-2 pr-4">Created</th>
+                        <th class="pb-2">Completed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Runs}}
+                    <tr class="border-b border-gray-100">
+                        <td class="py-2 pr-4">
+                            <a href="/newsletters/{{.ID}}" class="text-indigo-600 hover:text-indigo-800">{{.ID}}</a>
+                        </td>
+                        <td class="py-2 pr-4">
+                            <a href="/researchers/{{.ResearcherID}}" class="text-indigo-600 hover:text-indigo-800">{{.ResearcherName}}</a>
+                        </td>
+                        <td class="py-2 pr-4">
+                            {{if eq .Status "completed"}}
+                                <span class="inline-block px-2 py-0.5 bg-green-100 text-green-800 rounded text-xs font-medium">completed</span>
+                            {{else if eq .Status "failed"}}
+                                <span class="inline-block px-2 py-0.5 bg-red-100 text-red-800 rounded text-xs font-medium">failed</span>
+                            {{else}}
+                                <span class="inline-block px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs font-medium">{{.Status}}</span>
+                            {{end}}
+                        </td>
+                        <td class="py-2 pr-4 text-center">{{.PapersFound}}</td>
+                        <td class="py-2 pr-4 text-center">{{.PapersIncluded}}</td>
+                        <td class="py-2 pr-4 text-gray-600">{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
+                        <td class="py-2 text-gray-600">{{if .CompletedAt.Valid}}{{.CompletedAt.Time.Format "2006-01-02 15:04"}}{{else}}<span class="text-gray-400">-</span>{{end}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <p class="text-gray-500">No newsletter runs yet.</p>
+        {{end}}
+    </div>
+</div>
+{{end}}

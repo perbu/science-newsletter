@@ -39,9 +39,10 @@ func EmailFromContext(ctx context.Context) string {
 // Public paths (/login, /auth/verify) are exempt.
 func Middleware(queries *db.Queries, cfg config.AuthConfig, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Allow public paths through without auth
 		cleanPath := path.Clean(r.URL.Path)
-		if cleanPath == "/login" || cleanPath == "/auth/verify" {
+
+		// Fully public paths — no session lookup needed
+		if cleanPath == "/signup" || cleanPath == "/auth/verify" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -52,9 +53,14 @@ func Middleware(queries *db.Queries, cfg config.AuthConfig, next http.Handler) h
 			return
 		}
 
+		// Try to resolve session
 		cookie, err := r.Cookie(sessionCookieName)
 		if err != nil || cookie.Value == "" {
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			if cleanPath == "/" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			http.Redirect(w, r, "/signup", http.StatusSeeOther)
 			return
 		}
 
@@ -62,7 +68,11 @@ func Middleware(queries *db.Queries, cfg config.AuthConfig, next http.Handler) h
 		if err != nil {
 			slog.Debug("invalid session cookie", "err", err)
 			ClearSessionCookie(w, cfg)
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			if cleanPath == "/" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			http.Redirect(w, r, "/signup", http.StatusSeeOther)
 			return
 		}
 
@@ -95,6 +105,11 @@ func ClearSessionCookie(w http.ResponseWriter, cfg config.AuthConfig) {
 		Secure:   cfg.CookieSecure,
 		SameSite: http.SameSiteLaxMode,
 	})
+}
+
+// IsAdmin checks if the email is in the admin list (case-insensitive).
+func IsAdmin(email string, adminEmails []string) bool {
+	return IsAllowed(email, adminEmails)
 }
 
 // IsAllowed checks if the email is in the allowed list (case-insensitive).

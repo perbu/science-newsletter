@@ -4,13 +4,12 @@ import "net/http"
 
 func SetupRoutes(mux *http.ServeMux, h *Handler) {
 	// Auth routes (public, not behind middleware)
-	mux.HandleFunc("GET /login", h.LoginPage)
-	mux.HandleFunc("POST /login", h.LoginSubmit)
+	mux.HandleFunc("GET /signup", h.LoginPage)
+	mux.HandleFunc("POST /signup", h.LoginSubmit)
 	mux.HandleFunc("GET /auth/verify", h.VerifyToken)
 	mux.HandleFunc("POST /logout", h.Logout)
 
 	mux.HandleFunc("GET /{$}", h.Index)
-	mux.HandleFunc("POST /auth/pick-researcher", h.PickResearcher)
 	mux.HandleFunc("GET /researchers/new", h.NewResearcher)
 	mux.HandleFunc("POST /researchers/search", h.SearchResearchers)
 	mux.HandleFunc("POST /researchers", h.CreateResearcher)
@@ -27,4 +26,12 @@ func SetupRoutes(mux *http.ServeMux, h *Handler) {
 	mux.HandleFunc("POST /researchers/{id}/cited-authors", h.AddCitedAuthor)
 	mux.HandleFunc("PUT /researchers/{id}/cited-authors/{authorID}/toggle", h.ToggleCitedAuthor)
 	mux.HandleFunc("DELETE /researchers/{id}/cited-authors/{authorID}", h.DeleteCitedAuthor)
+
+	// Admin routes
+	mux.HandleFunc("GET /admin", h.AdminDashboard)
+	mux.HandleFunc("GET /admin/newsletter-runs", h.AdminNewsletterRuns)
+	mux.HandleFunc("GET /admin/sessions", h.AdminSessions)
+	mux.HandleFunc("DELETE /admin/sessions/{sessionID}", h.AdminRevokeSession)
+	mux.HandleFunc("POST /admin/trigger/{id}", h.AdminTriggerPipeline)
+	mux.HandleFunc("GET /admin/jobs/{id}", h.AdminJobStatus)
 }

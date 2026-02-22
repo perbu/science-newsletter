@@ -8,6 +8,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 const createResearcher = `-- name: CreateResearcher :one
@@ -157,6 +158,114 @@ SELECT id, openalex_id, name, affiliation, h_index, works_count, cited_by_count,
 
 func (q *Queries) ListResearchers(ctx context.Context) ([]Researcher, error) {
 	rows, err := q.db.QueryContext(ctx, listResearchers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Researcher
+	for rows.Next() {
+		var i Researcher
+		if err := rows.Scan(
+			&i.ID,
+			&i.OpenalexID,
+			&i.Name,
+			&i.Affiliation,
+			&i.HIndex,
+			&i.WorksCount,
+			&i.CitedByCount,
+			&i.RelevancyThreshold,
+			&i.LastSyncedAt,
+			&i.CreatedAt,
+			&i.ResearchInterests,
+			&i.Email,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listResearchersAdmin = `-- name: ListResearchersAdmin :many
+SELECT r.id, r.openalex_id, r.name, r.affiliation, r.h_index, r.works_count, r.cited_by_count, r.relevancy_threshold, r.last_synced_at, r.created_at, r.research_interests, r.email,
+    (SELECT COUNT(*) FROM topics WHERE researcher_id = r.id) as topics_count,
+    (SELECT COUNT(*) FROM cited_authors WHERE researcher_id = r.id AND active = 1) as cited_authors_count,
+    (SELECT COUNT(*) FROM newsletter_runs WHERE researcher_id = r.id) as newsletter_runs_count,
+    (SELECT COUNT(*) FROM newsletter_runs WHERE researcher_id = r.id AND status = 'completed') as completed_runs_count
+FROM researchers r ORDER BY r.name
+`
+
+type ListResearchersAdminRow struct {
+	ID                  string
+	OpenalexID          string
+	Name                string
+	Affiliation         string
+	HIndex              int64
+	WorksCount          int64
+	CitedByCount        int64
+	RelevancyThreshold  float64
+	LastSyncedAt        sql.NullTime
+	CreatedAt           time.Time
+	ResearchInterests   string
+	Email               sql.NullString
+	TopicsCount         int64
+	CitedAuthorsCount   int64
+	NewsletterRunsCount int64
+	CompletedRunsCount  int64
+}
+
+func (q *Queries) ListResearchersAdmin(ctx context.Context) ([]ListResearchersAdminRow, error) {
+	rows, err := q.db.QueryContext(ctx, listResearchersAdmin)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListResearchersAdminRow
+	for rows.Next() {
+		var i ListResearchersAdminRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.OpenalexID,
+			&i.Name,
+			&i.Affiliation,
+			&i.HIndex,
+			&i.WorksCount,
+			&i.CitedByCount,
+			&i.RelevancyThreshold,
+			&i.LastSyncedAt,
+			&i.CreatedAt,
+			&i.ResearchInterests,
+			&i.Email,
+			&i.TopicsCount,
+			&i.CitedAuthorsCount,
+			&i.NewsletterRunsCount,
+			&i.CompletedRunsCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listResearchersWithEmail = `-- name: ListResearchersWithEmail :many
+SELECT id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at, research_interests, email FROM researchers WHERE email IS NOT NULL AND email != '' ORDER BY name
+`
+
+func (q *Queries) ListResearchersWithEmail(ctx context.Context) ([]Researcher, error) {
+	rows, err := q.db.QueryContext(ctx, listResearchersWithEmail)
 	if err != nil {
 		return nil, err
 	}

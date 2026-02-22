@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+	"database/sql"
+	"time"
 )
 
 const createNewsletterItem = `-- name: CreateNewsletterItem :exec
@@ -83,6 +85,73 @@ func (q *Queries) GetNewsletterRun(ctx context.Context, id int64) (NewsletterRun
 		&i.CompletedAt,
 	)
 	return i, err
+}
+
+const hasCompletedRunSince = `-- name: HasCompletedRunSince :one
+SELECT count(*) > 0 FROM newsletter_runs WHERE researcher_id = ? AND status = 'completed' AND created_at >= ?
+`
+
+type HasCompletedRunSinceParams struct {
+	ResearcherID string
+	CreatedAt    time.Time
+}
+
+func (q *Queries) HasCompletedRunSince(ctx context.Context, arg HasCompletedRunSinceParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, hasCompletedRunSince, arg.ResearcherID, arg.CreatedAt)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const listAllNewsletterRuns = `-- name: ListAllNewsletterRuns :many
+SELECT nr.id, nr.researcher_id, nr.status, nr.papers_found, nr.papers_included,
+       nr.created_at, nr.completed_at, r.name as researcher_name
+FROM newsletter_runs nr
+JOIN researchers r ON r.id = nr.researcher_id
+ORDER BY nr.created_at DESC LIMIT ?
+`
+
+type ListAllNewsletterRunsRow struct {
+	ID             int64
+	ResearcherID   string
+	Status         string
+	PapersFound    int64
+	PapersIncluded int64
+	CreatedAt      time.Time
+	CompletedAt    sql.NullTime
+	ResearcherName string
+}
+
+func (q *Queries) ListAllNewsletterRuns(ctx context.Context, limit int64) ([]ListAllNewsletterRunsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAllNewsletterRuns, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllNewsletterRunsRow
+	for rows.Next() {
+		var i ListAllNewsletterRunsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ResearcherID,
+			&i.Status,
+			&i.PapersFound,
+			&i.PapersIncluded,
+			&i.CreatedAt,
+			&i.CompletedAt,
+			&i.ResearcherName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listNewsletterItems = `-- name: ListNewsletterItems :many

@@ -21,6 +21,16 @@ LIMIT ?;
 INSERT INTO newsletter_items (newsletter_run_id, openalex_id, title, authors, publication_date, doi, relevancy_score, summary, is_cited_author_paper, cited_author_name)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
+-- name: HasCompletedRunSince :one
+SELECT count(*) > 0 FROM newsletter_runs WHERE researcher_id = ? AND status = 'completed' AND created_at >= ?;
+
+-- name: ListAllNewsletterRuns :many
+SELECT nr.id, nr.researcher_id, nr.status, nr.papers_found, nr.papers_included,
+       nr.created_at, nr.completed_at, r.name as researcher_name
+FROM newsletter_runs nr
+JOIN researchers r ON r.id = nr.researcher_id
+ORDER BY nr.created_at DESC LIMIT ?;
+
 -- name: ListNewsletterItems :many
 SELECT * FROM newsletter_items
 WHERE newsletter_run_id = ?

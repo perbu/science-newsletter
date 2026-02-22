@@ -69,6 +69,15 @@ func (q *Queries) DeleteSession(ctx context.Context, token string) error {
 	return err
 }
 
+const deleteSessionByID = `-- name: DeleteSessionByID :exec
+DELETE FROM sessions WHERE id = ?
+`
+
+func (q *Queries) DeleteSessionByID(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, deleteSessionByID, id)
+	return err
+}
+
 const getAuthTokenByToken = `-- name: GetAuthTokenByToken :one
 SELECT id, token, email, expires_at, used_at, created_at FROM auth_tokens
 WHERE token = ? AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP
@@ -104,6 +113,39 @@ func (q *Queries) GetSessionByToken(ctx context.Context, token string) (Session,
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const listActiveSessions = `-- name: ListActiveSessions :many
+SELECT id, token, email, expires_at, created_at FROM sessions WHERE expires_at > CURRENT_TIMESTAMP ORDER BY created_at DESC
+`
+
+func (q *Queries) ListActiveSessions(ctx context.Context) ([]Session, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveSessions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Session
+	for rows.Next() {
+		var i Session
+		if err := rows.Scan(
+			&i.ID,
+			&i.Token,
+			&i.Email,
+			&i.ExpiresAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const markAuthTokenUsed = `-- name: MarkAuthTokenUsed :exec

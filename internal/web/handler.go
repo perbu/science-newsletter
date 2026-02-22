@@ -12,13 +12,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/perbu/science-newsletter/internal/agent"
 	"github.com/perbu/science-newsletter/internal/auth"
 	"github.com/perbu/science-newsletter/internal/config"
 	"github.com/perbu/science-newsletter/internal/database/db"
 	"github.com/perbu/science-newsletter/internal/email"
-	"github.com/perbu/science-newsletter/internal/newsletter"
 	"github.com/perbu/science-newsletter/internal/openalex"
+	"github.com/perbu/science-newsletter/internal/pipeline"
 	"github.com/perbu/science-newsletter/internal/scanner"
 	"github.com/perbu/science-newsletter/internal/sync"
 )
@@ -31,7 +30,7 @@ type Handler struct {
 	client   *openalex.Client
 	syncer   *sync.Syncer
 	scanner  *scanner.Scanner
-	enricher *agent.Enricher
+	pipeline *pipeline.Pipeline
 	mailer   *email.Mailer
 	cfg      *config.Config
 	pages    map[string]*template.Template
@@ -43,19 +42,22 @@ func NewHandler(
 	client *openalex.Client,
 	syncer *sync.Syncer,
 	scn *scanner.Scanner,
-	enricher *agent.Enricher,
+	pip *pipeline.Pipeline,
 	mailer *email.Mailer,
 	cfg *config.Config,
 ) (*Handler, error) {
 	// Parse each page template together with the layout
 	pageFiles := []string{
+		"landing.html.tmpl",
 		"index.html.tmpl",
-		"pick_researcher.html.tmpl",
 		"researcher_new.html.tmpl",
 		"researcher_detail.html.tmpl",
 		"newsletter_view.html.tmpl",
 		"login.html.tmpl",
 		"check_email.html.tmpl",
+		"admin_dashboard.html.tmpl",
+		"admin_newsletter_runs.html.tmpl",
+		"admin_sessions.html.tmpl",
 	}
 	pages := make(map[string]*template.Template, len(pageFiles))
 	for _, pf := range pageFiles {
@@ -71,7 +73,7 @@ func NewHandler(
 		client:   client,
 		syncer:   syncer,
 		scanner:  scn,
-		enricher: enricher,
+		pipeline: pip,
 		mailer:   mailer,
 		cfg:      cfg,
 		pages:    pages,
@@ -80,55 +82,28 @@ func NewHandler(
 }
 
 func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
-	// If the user is authenticated, try to redirect to their linked researcher
+	// If the user is authenticated, redirect to their researcher or setup
 	if email := auth.EmailFromContext(r.Context()); email != "" {
 		researcher, err := h.queries.GetResearcherByEmail(r.Context(), sql.NullString{String: email, Valid: true})
 		if err == nil {
 			http.Redirect(w, r, "/researchers/"+researcher.ID, http.StatusSeeOther)
 			return
 		}
-		// No linked researcher — show the picker
-		researchers, err := h.queries.ListResearchers(r.Context())
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		h.renderPage(w, r, "pick_researcher.html.tmpl", map[string]any{"Researchers": researchers})
+		// No linked researcher — redirect to setup
+		http.Redirect(w, r, "/researchers/new", http.StatusSeeOther)
 		return
 	}
 
-	researchers, err := h.queries.ListResearchers(r.Context())
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	h.renderPage(w, r, "index.html.tmpl", map[string]any{"Researchers": researchers})
-}
-
-func (h *Handler) PickResearcher(w http.ResponseWriter, r *http.Request) {
-	email := auth.EmailFromContext(r.Context())
-	if email == "" {
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-		return
-	}
-	researcherID := r.FormValue("researcher_id")
-	if _, err := uuid.Parse(researcherID); err != nil {
-		http.Error(w, "invalid researcher ID", http.StatusBadRequest)
-		return
-	}
-	if err := h.queries.LinkResearcherEmail(r.Context(), db.LinkResearcherEmailParams{
-		Email: sql.NullString{String: email, Valid: true},
-		ID:    researcherID,
-	}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	slog.Info("researcher linked to email", "email", email, "researcher_id", researcherID)
-	http.Redirect(w, r, "/researchers/"+researcherID, http.StatusSeeOther)
+	// Unauthenticated visitors see the public landing page
+	h.renderPage(w, r, "landing.html.tmpl", nil)
 }
 
 func (h *Handler) NewResearcher(w http.ResponseWriter, r *http.Request) {
-	h.renderPage(w, r, "researcher_new.html.tmpl", nil)
+	data := map[string]any{}
+	if email := auth.EmailFromContext(r.Context()); email != "" {
+		data["SetupMode"] = true
+	}
+	h.renderPage(w, r, "researcher_new.html.tmpl", data)
 }
 
 func (h *Handler) SearchResearchers(w http.ResponseWriter, r *http.Request) {
@@ -155,8 +130,9 @@ func (h *Handler) CreateResearcher(w http.ResponseWriter, r *http.Request) {
 
 	name := r.FormValue("name")
 	openalexID := r.FormValue("openalex_id")
+	newID := uuid.New().String()
 	_, err := h.queries.CreateResearcher(r.Context(), db.CreateResearcherParams{
-		ID:                 uuid.New().String(),
+		ID:                 newID,
 		OpenalexID:         openalexID,
 		Name:               name,
 		Affiliation:        r.FormValue("affiliation"),
@@ -170,7 +146,20 @@ func (h *Handler) CreateResearcher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slog.Info("researcher created", "name", name, "openalex_id", openalexID)
-	w.Header().Set("HX-Redirect", "/")
+
+	// Auto-link authenticated user's email to the new researcher
+	if email := auth.EmailFromContext(r.Context()); email != "" {
+		if err := h.queries.LinkResearcherEmail(r.Context(), db.LinkResearcherEmailParams{
+			Email: sql.NullString{String: email, Valid: true},
+			ID:    newID,
+		}); err != nil {
+			slog.Error("failed to link email to researcher", "email", email, "researcher_id", newID, "err", err)
+		} else {
+			slog.Info("researcher linked to email", "email", email, "researcher_id", newID)
+		}
+	}
+
+	w.Header().Set("HX-Redirect", "/researchers/"+newID)
 	w.WriteHeader(http.StatusCreated)
 }
 
@@ -300,75 +289,20 @@ func (h *Handler) AnalyzeScan(w http.ResponseWriter, r *http.Request) {
 
 	jobKey := "analyze:" + id
 	started := h.jobs.Start(jobKey, func(ctx context.Context) (string, error) {
-		run, err := h.queries.CreateNewsletterRun(ctx, id)
+		result, err := h.pipeline.Analyze(ctx, id)
 		if err != nil {
-			return "", fmt.Errorf("creating newsletter run: %w", err)
+			return "", err
 		}
 
-		papers, err := h.scanner.LoadCachedWorks(ctx, id)
-		if err != nil {
-			h.failRun(ctx, run.ID, err)
-			return "", fmt.Errorf("loading cached works: %w", err)
-		}
-
-		if len(papers) == 0 {
-			_ = h.queries.UpdateNewsletterRun(ctx, db.UpdateNewsletterRunParams{
-				ID:     run.ID,
-				Status: "completed",
-			})
+		if result.PapersFound == 0 && result.PapersIncluded == 0 {
 			return "No cached papers found. Fetch papers first.", nil
 		}
-
-		results, err := h.enricher.FilterAndEnrich(ctx, papers, researcher.Name, researcher.ResearchInterests)
-		if err != nil {
-			h.failRun(ctx, run.ID, err)
-			return "", fmt.Errorf("analysis failed: %w", err)
-		}
-
-		if len(results) == 0 {
-			_ = h.queries.UpdateNewsletterRun(ctx, db.UpdateNewsletterRunParams{
-				ID:     run.ID,
-				Status: "completed",
-			})
+		if result.PapersIncluded == 0 {
 			return "No papers deemed relevant by LLM filter. Try adjusting research interests.", nil
 		}
 
-		for _, r := range results {
-			isCitedAuthor := int64(0)
-			if r.Paper.IsCitedAuthor {
-				isCitedAuthor = 1
-			}
-			_ = h.queries.CreateNewsletterItem(ctx, db.CreateNewsletterItemParams{
-				NewsletterRunID:    run.ID,
-				OpenalexID:         r.Paper.Work.ID,
-				Title:              r.Paper.Work.Title,
-				Authors:            scanner.AuthorNames(r.Paper.Work),
-				PublicationDate:    r.Paper.Work.PublicationDate,
-				Doi:                r.Paper.Work.DOI,
-				RelevancyScore:     r.Paper.RelevancyScore,
-				Summary:            r.Summary,
-				IsCitedAuthorPaper: isCitedAuthor,
-				CitedAuthorName:    r.Paper.CitedAuthorName,
-			})
-		}
-
-		items, _ := h.queries.ListNewsletterItems(ctx, run.ID)
-		html, err := newsletter.Generate(researcher, items, h.cfg.Scanner.LookbackDays)
-		if err != nil {
-			h.failRun(ctx, run.ID, err)
-			return "", fmt.Errorf("newsletter generation failed: %w", err)
-		}
-
-		_ = h.queries.UpdateNewsletterRun(ctx, db.UpdateNewsletterRunParams{
-			ID:             run.ID,
-			Status:         "completed",
-			PapersFound:    int64(len(papers)),
-			PapersIncluded: int64(len(items)),
-			HtmlContent:    html,
-		})
-
 		return fmt.Sprintf(`Newsletter ready! %d papers included (from %d candidates). <a href="/newsletters/%d" class="underline">View newsletter</a>`,
-			len(items), len(papers), run.ID), nil
+			result.PapersIncluded, result.PapersFound, result.RunID), nil
 	})
 	if !started {
 		fmt.Fprint(w, `<span class="text-yellow-600">Analysis already running...</span>`)
@@ -401,13 +335,14 @@ func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, page string
 		return
 	}
 
-	// Inject AuthEmail from context into template data
+	// Inject AuthEmail and IsAdmin from context into template data
 	m, _ := data.(map[string]any)
 	if m == nil {
 		m = make(map[string]any)
 	}
 	if email := auth.EmailFromContext(r.Context()); email != "" {
 		m["AuthEmail"] = email
+		m["IsAdmin"] = auth.IsAdmin(email, h.cfg.Auth.AdminEmails)
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -426,14 +361,6 @@ func (h *Handler) renderFragment(w http.ResponseWriter, name string, data any) {
 	if err := tmpl.Execute(w, data); err != nil {
 		slog.Error("render fragment", "name", name, "err", err)
 	}
-}
-
-func (h *Handler) failRun(ctx context.Context, runID int64, runErr error) {
-	_ = h.queries.UpdateNewsletterRun(ctx, db.UpdateNewsletterRunParams{
-		ID:     runID,
-		Status: "failed",
-	})
-	slog.Error("scan run failed", "run_id", runID, "err", runErr)
 }
 
 func (h *Handler) UpdateResearchInterests(w http.ResponseWriter, r *http.Request) {

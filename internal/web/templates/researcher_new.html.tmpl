@@ -1,5 +1,10 @@
 {{define "content"}}
+{{if .SetupMode}}
+<h1 class="text-2xl font-bold text-gray-800 mb-2">Set Up Your Profile</h1>
+<p class="text-gray-600 mb-6">Search for yourself on OpenAlex to create your researcher profile.</p>
+{{else}}
 <h1 class="text-2xl font-bold text-gray-800 mb-6">Add Researcher</h1>
+{{end}}
 
 <form hx-post="/researchers/search" hx-target="#search-results" class="mb-6">
     <div class="flex gap-3">

@@ -4,8 +4,9 @@
 
 A monthly academic newsletter agent. Given a researcher, it syncs their profile from OpenAlex (publications, frequently
 cited authors from referenced works), scans for recent papers relevant to their work, uses Google Gemini to generate
-contextual summaries, and produces an HTML newsletter. There's an HTMX frontend for managing researchers and triggering
-scans.
+contextual summaries, and produces an HTML newsletter. Newsletters are sent automatically on the 1st of each month to
+researchers with configured email addresses. There's also an HTMX frontend for managing researchers and triggering
+scans manually.
 
 The target user is a non-technical person (my wife, a researcher) who wants a monthly digest of papers relevant to her
 field without manually trawling OpenAlex or Google Scholar. I have a few more friends which will be interested as
@@ -39,6 +40,8 @@ internal/
   agent/                     — Gemini enrichment (generate paper summaries)
   email/                     — Resend email client (send newsletters)
   newsletter/                — render HTML newsletter from items
+  pipeline/                  — reusable fetch → analyze → newsletter orchestration
+  scheduler/                 — monthly cron: runs pipeline for all researchers, sends email
   web/                       — HTTP handlers, routes, HTMX templates
 ```
 
@@ -87,15 +90,26 @@ The scanner is split into two independent phases so you can re-analyze cached da
 ### Analyze phase (`POST /researchers/{id}/analyze`)
 
 1. Load cached works from `scanned_works` for the previous calendar month
-2. Score each paper: `sum(matching topic shares) / sum(search topic shares)` — range [0,1]
-3. Papers above the researcher's `relevancy_threshold` are included; cited author papers always included
-4. Gemini generates a one-sentence summary for each included paper
-5. Results stored in `newsletter_runs` + `newsletter_items`, HTML rendered from template
+2. Gemini filters and enriches papers (LLM-based relevancy + one-sentence summaries)
+3. Results stored in `newsletter_runs` + `newsletter_items`, HTML rendered from template
+
+The HTTP handler delegates to `pipeline.Pipeline.Analyze()`, which contains the orchestration logic.
 
 Both phases always target the **previous** calendar month (e.g. running in February covers January). This means you
 can run on the 1st of the month and get a complete period. The `scan_month` column stores the year-month
 (e.g. `"2026-01"`). Re-fetching the same month refreshes the cached data. Re-analyzing re-scores and re-enriches
 without hitting OpenAlex.
+
+### Automated monthly run (scheduler)
+
+On the 1st of each month, the scheduler automatically processes all researchers who have an email address and
+research interests configured. For each researcher it runs the full pipeline (`FetchAndAnalyze`: fetch from OpenAlex,
+then analyze) and emails the resulting newsletter via Resend.
+
+- Uses a 1-hour ticker that checks `time.Now().Day() == 1` (avoids drift from daily tickers)
+- Idempotent: checks `HasCompletedRunSince` (beginning of current month) before processing each researcher
+- Only starts when a Resend API key is configured (mailer is non-nil)
+- Follows the `auth.StartCleanup()` pattern: a goroutine launched from `main.go`
 
 ## Logging
 
@@ -140,3 +154,7 @@ journalctl --user -u science-newsletter -f      # tail logs
   are batch-fetched to extract author citation frequencies. The most frequently cited authors represent deliberate
   intellectual engagement and are better signals for interesting content than co-authors. These cited authors are
   used for paper discovery (fetch phase) and threshold bypass (analyze phase).
+- **Pipeline package**: The newsletter creation orchestration (create run → load works → enrich → store items →
+  generate HTML) lives in `internal/pipeline`, shared by both the HTTP handler and the scheduler. The handler calls
+  `Analyze()` (works already fetched via separate UI button), the scheduler calls `FetchAndAnalyze()` (full
+  end-to-end).

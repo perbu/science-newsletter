@@ -21,6 +21,7 @@ type Config struct {
 
 type AuthConfig struct {
 	AllowedEmails []string `yaml:"allowed_emails"`
+	AdminEmails   []string `yaml:"admin_emails"`
 	TokenExpiry   int      `yaml:"token_expiry"`
 	SessionMaxAge int      `yaml:"session_max_age"`
 	CookieSecure  bool     `yaml:"cookie_secure"`
@@ -113,6 +114,20 @@ func Load(path string) (*Config, error) {
 		var port int
 		if _, err := fmt.Sscanf(v, "%d", &port); err == nil {
 			cfg.Server.Port = port
+		}
+	}
+
+	// Merge admin emails into allowed emails so admins can always log in
+	for _, ae := range cfg.Auth.AdminEmails {
+		found := false
+		for _, al := range cfg.Auth.AllowedEmails {
+			if strings.EqualFold(al, ae) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			cfg.Auth.AllowedEmails = append(cfg.Auth.AllowedEmails, ae)
 		}
 	}
 

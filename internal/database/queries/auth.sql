@@ -25,3 +25,9 @@ DELETE FROM auth_tokens WHERE expires_at <= CURRENT_TIMESTAMP;
 
 -- name: DeleteExpiredSessions :exec
 DELETE FROM sessions WHERE expires_at <= CURRENT_TIMESTAMP;
+
+-- name: ListActiveSessions :many
+SELECT * FROM sessions WHERE expires_at > CURRENT_TIMESTAMP ORDER BY created_at DESC;
+
+-- name: DeleteSessionByID :exec
+DELETE FROM sessions WHERE id = ?;

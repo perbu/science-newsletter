@@ -1,0 +1,82 @@
+{{define "content"}}
+<div class="space-y-8">
+    <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+        <div class="flex gap-3">
+            <a href="/admin/newsletter-runs" class="text-sm text-indigo-600 hover:text-indigo-800">Newsletter Runs</a>
+            <a href="/admin/sessions" class="text-sm text-indigo-600 hover:text-indigo-800">Sessions</a>
+        </div>
+    </div>
+
+    <!-- System Status -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4">System Status</h2>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div>
+                <span class="text-gray-500">Gemini API Key</span>
+                <div>{{if .HasGeminiKey}}<span class="text-green-600 font-medium">Configured</span>{{else}}<span class="text-red-600 font-medium">Missing</span>{{end}}</div>
+            </div>
+            <div>
+                <span class="text-gray-500">OpenAlex API Key</span>
+                <div>{{if .HasOpenAlexKey}}<span class="text-green-600 font-medium">Configured</span>{{else}}<span class="text-yellow-600 font-medium">Not set (polite pool)</span>{{end}}</div>
+            </div>
+            <div>
+                <span class="text-gray-500">Resend API Key</span>
+                <div>{{if .HasResendKey}}<span class="text-green-600 font-medium">Configured</span>{{else}}<span class="text-red-600 font-medium">Missing</span>{{end}}</div>
+            </div>
+            <div>
+                <span class="text-gray-500">Mailer</span>
+                <div>{{if .MailerEnabled}}<span class="text-green-600 font-medium">Enabled</span>{{else}}<span class="text-yellow-600 font-medium">Disabled</span>{{end}}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Researchers Table -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-lg font-semibold text-gray-800 mb-4">Researchers ({{len .Researchers}})</h2>
+        {{if .Researchers}}
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b text-left text-gray-500">
+                        <th class="pb-2 pr-4">Name</th>
+                        <th class="pb-2 pr-4">Email</th>
+                        <th class="pb-2 pr-4">Last Synced</th>
+                        <th class="pb-2 pr-4 text-center">Topics</th>
+                        <th class="pb-2 pr-4 text-center">Cited Authors</th>
+                        <th class="pb-2 pr-4 text-center">Runs</th>
+                        <th class="pb-2">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Researchers}}
+                    <tr class="border-b border-gray-100">
+                        <td class="py-2 pr-4">
+                            <a href="/researchers/{{.ID}}" class="text-indigo-600 hover:text-indigo-800 font-medium">{{.Name}}</a>
+                        </td>
+                        <td class="py-2 pr-4 text-gray-600">{{if .Email.Valid}}{{.Email.String}}{{else}}<span class="text-gray-400">-</span>{{end}}</td>
+                        <td class="py-2 pr-4 text-gray-600">{{if .LastSyncedAt.Valid}}{{.LastSyncedAt.Time.Format "2006-01-02"}}{{else}}<span class="text-gray-400">Never</span>{{end}}</td>
+                        <td class="py-2 pr-4 text-center">{{.TopicsCount}}</td>
+                        <td class="py-2 pr-4 text-center">{{.CitedAuthorsCount}}</td>
+                        <td class="py-2 pr-4 text-center">{{.CompletedRunsCount}}/{{.NewsletterRunsCount}}</td>
+                        <td class="py-2">
+                            <span id="pipeline-status-{{.ID}}">
+                                <button hx-post="/admin/trigger/{{.ID}}"
+                                        hx-target="#pipeline-status-{{.ID}}"
+                                        hx-swap="innerHTML"
+                                        class="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-2 py-1 rounded">
+                                    Run Pipeline
+                                </button>
+                            </span>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <p class="text-gray-500">No researchers configured.</p>
+        {{end}}
+    </div>
+</div>
+{{end}}

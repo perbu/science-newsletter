@@ -18,7 +18,9 @@ import (
 	"github.com/perbu/science-newsletter/internal/database/db"
 	"github.com/perbu/science-newsletter/internal/email"
 	"github.com/perbu/science-newsletter/internal/openalex"
+	"github.com/perbu/science-newsletter/internal/pipeline"
 	"github.com/perbu/science-newsletter/internal/scanner"
+	"github.com/perbu/science-newsletter/internal/scheduler"
 	syncpkg "github.com/perbu/science-newsletter/internal/sync"
 	"github.com/perbu/science-newsletter/internal/web"
 )
@@ -88,8 +90,11 @@ func run() error {
 		slog.Info("no Resend API key configured, email sending disabled")
 	}
 
+	// Create reusable pipeline (used by both HTTP handlers and scheduler)
+	pip := pipeline.New(queries, scn, enricher, cfg)
+
 	// Setup HTTP
-	handler, err := web.NewHandler(queries, oaClient, syncer, scn, enricher, mailer, cfg)
+	handler, err := web.NewHandler(queries, oaClient, syncer, scn, pip, mailer, cfg)
 	if err != nil {
 		return fmt.Errorf("create handler: %w", err)
 	}
@@ -108,6 +113,12 @@ func run() error {
 
 	// Start periodic cleanup of expired tokens and sessions
 	auth.StartCleanup(context.Background(), queries, 1*time.Hour)
+
+	// Start monthly newsletter scheduler (only when email is configured)
+	if mailer != nil {
+		sched := scheduler.New(queries, pip, mailer)
+		sched.Start(context.Background())
+	}
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	slog.Info("starting server", "addr", addr)

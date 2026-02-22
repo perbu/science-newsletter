@@ -29,5 +29,16 @@ SELECT * FROM researchers WHERE email = ? LIMIT 1;
 -- name: LinkResearcherEmail :exec
 UPDATE researchers SET email = ? WHERE id = ?;
 
+-- name: ListResearchersWithEmail :many
+SELECT * FROM researchers WHERE email IS NOT NULL AND email != '' ORDER BY name;
+
+-- name: ListResearchersAdmin :many
+SELECT r.*,
+    (SELECT COUNT(*) FROM topics WHERE researcher_id = r.id) as topics_count,
+    (SELECT COUNT(*) FROM cited_authors WHERE researcher_id = r.id AND active = 1) as cited_authors_count,
+    (SELECT COUNT(*) FROM newsletter_runs WHERE researcher_id = r.id) as newsletter_runs_count,
+    (SELECT COUNT(*) FROM newsletter_runs WHERE researcher_id = r.id AND status = 'completed') as completed_runs_count
+FROM researchers r ORDER BY r.name;
+
 -- name: DeleteResearcher :exec
 DELETE FROM researchers WHERE id = ?;
