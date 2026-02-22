@@ -97,6 +97,12 @@ func (h *Handler) VerifyTokenSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !auth.IsAllowed(authToken.Email, h.cfg.Auth.AllowedEmails) {
+		slog.Warn("sign-in attempt from non-allowed email", "email", authToken.Email)
+		h.renderPage(w, r, "login.html.tmpl", map[string]any{"Error": "Your email address is not authorized. Please contact the administrator."})
+		return
+	}
+
 	if err := h.queries.MarkAuthTokenUsed(r.Context(), token); err != nil {
 		slog.Error("mark auth token used", "err", err)
 	}
