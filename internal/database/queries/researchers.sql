@@ -23,5 +23,11 @@ UPDATE researchers SET relevancy_threshold = ? WHERE id = ?;
 -- name: UpdateResearcherInterests :exec
 UPDATE researchers SET research_interests = ? WHERE id = ?;
 
+-- name: GetResearcherByEmail :one
+SELECT * FROM researchers WHERE email = ? LIMIT 1;
+
+-- name: LinkResearcherEmail :exec
+UPDATE researchers SET email = ? WHERE id = ?;
+
 -- name: DeleteResearcher :exec
 DELETE FROM researchers WHERE id = ?;

@@ -79,6 +79,7 @@ type Researcher struct {
 	LastSyncedAt       sql.NullTime
 	CreatedAt          time.Time
 	ResearchInterests  string
+	Email              sql.NullString
 }
 
 type ScannedWork struct {

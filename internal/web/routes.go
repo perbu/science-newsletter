@@ -10,6 +10,7 @@ func SetupRoutes(mux *http.ServeMux, h *Handler) {
 	mux.HandleFunc("POST /logout", h.Logout)
 
 	mux.HandleFunc("GET /{$}", h.Index)
+	mux.HandleFunc("POST /auth/pick-researcher", h.PickResearcher)
 	mux.HandleFunc("GET /researchers/new", h.NewResearcher)
 	mux.HandleFunc("POST /researchers/search", h.SearchResearchers)
 	mux.HandleFunc("POST /researchers", h.CreateResearcher)

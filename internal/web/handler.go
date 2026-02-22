@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"database/sql"
 	"embed"
 	"fmt"
 	"html/template"
@@ -49,6 +50,7 @@ func NewHandler(
 	// Parse each page template together with the layout
 	pageFiles := []string{
 		"index.html.tmpl",
+		"pick_researcher.html.tmpl",
 		"researcher_new.html.tmpl",
 		"researcher_detail.html.tmpl",
 		"newsletter_view.html.tmpl",
@@ -78,12 +80,51 @@ func NewHandler(
 }
 
 func (h *Handler) Index(w http.ResponseWriter, r *http.Request) {
+	// If the user is authenticated, try to redirect to their linked researcher
+	if email := auth.EmailFromContext(r.Context()); email != "" {
+		researcher, err := h.queries.GetResearcherByEmail(r.Context(), sql.NullString{String: email, Valid: true})
+		if err == nil {
+			http.Redirect(w, r, "/researchers/"+researcher.ID, http.StatusSeeOther)
+			return
+		}
+		// No linked researcher — show the picker
+		researchers, err := h.queries.ListResearchers(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		h.renderPage(w, r, "pick_researcher.html.tmpl", map[string]any{"Researchers": researchers})
+		return
+	}
+
 	researchers, err := h.queries.ListResearchers(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	h.renderPage(w, r, "index.html.tmpl", map[string]any{"Researchers": researchers})
+}
+
+func (h *Handler) PickResearcher(w http.ResponseWriter, r *http.Request) {
+	email := auth.EmailFromContext(r.Context())
+	if email == "" {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	researcherID := r.FormValue("researcher_id")
+	if _, err := uuid.Parse(researcherID); err != nil {
+		http.Error(w, "invalid researcher ID", http.StatusBadRequest)
+		return
+	}
+	if err := h.queries.LinkResearcherEmail(r.Context(), db.LinkResearcherEmailParams{
+		Email: sql.NullString{String: email, Valid: true},
+		ID:    researcherID,
+	}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	slog.Info("researcher linked to email", "email", email, "researcher_id", researcherID)
+	http.Redirect(w, r, "/researchers/"+researcherID, http.StatusSeeOther)
 }
 
 func (h *Handler) NewResearcher(w http.ResponseWriter, r *http.Request) {

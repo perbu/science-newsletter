@@ -7,12 +7,13 @@ package db
 
 import (
 	"context"
+	"database/sql"
 )
 
 const createResearcher = `-- name: CreateResearcher :one
 INSERT INTO researchers (id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at, research_interests
+RETURNING id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at, research_interests, email
 `
 
 type CreateResearcherParams struct {
@@ -50,6 +51,7 @@ func (q *Queries) CreateResearcher(ctx context.Context, arg CreateResearcherPara
 		&i.LastSyncedAt,
 		&i.CreatedAt,
 		&i.ResearchInterests,
+		&i.Email,
 	)
 	return i, err
 }
@@ -64,7 +66,7 @@ func (q *Queries) DeleteResearcher(ctx context.Context, id string) error {
 }
 
 const getResearcher = `-- name: GetResearcher :one
-SELECT id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at, research_interests FROM researchers WHERE id = ? LIMIT 1
+SELECT id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at, research_interests, email FROM researchers WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetResearcher(ctx context.Context, id string) (Researcher, error) {
@@ -82,12 +84,37 @@ func (q *Queries) GetResearcher(ctx context.Context, id string) (Researcher, err
 		&i.LastSyncedAt,
 		&i.CreatedAt,
 		&i.ResearchInterests,
+		&i.Email,
+	)
+	return i, err
+}
+
+const getResearcherByEmail = `-- name: GetResearcherByEmail :one
+SELECT id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at, research_interests, email FROM researchers WHERE email = ? LIMIT 1
+`
+
+func (q *Queries) GetResearcherByEmail(ctx context.Context, email sql.NullString) (Researcher, error) {
+	row := q.db.QueryRowContext(ctx, getResearcherByEmail, email)
+	var i Researcher
+	err := row.Scan(
+		&i.ID,
+		&i.OpenalexID,
+		&i.Name,
+		&i.Affiliation,
+		&i.HIndex,
+		&i.WorksCount,
+		&i.CitedByCount,
+		&i.RelevancyThreshold,
+		&i.LastSyncedAt,
+		&i.CreatedAt,
+		&i.ResearchInterests,
+		&i.Email,
 	)
 	return i, err
 }
 
 const getResearcherByOpenAlexID = `-- name: GetResearcherByOpenAlexID :one
-SELECT id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at, research_interests FROM researchers WHERE openalex_id = ? LIMIT 1
+SELECT id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at, research_interests, email FROM researchers WHERE openalex_id = ? LIMIT 1
 `
 
 func (q *Queries) GetResearcherByOpenAlexID(ctx context.Context, openalexID string) (Researcher, error) {
@@ -105,12 +132,27 @@ func (q *Queries) GetResearcherByOpenAlexID(ctx context.Context, openalexID stri
 		&i.LastSyncedAt,
 		&i.CreatedAt,
 		&i.ResearchInterests,
+		&i.Email,
 	)
 	return i, err
 }
 
+const linkResearcherEmail = `-- name: LinkResearcherEmail :exec
+UPDATE researchers SET email = ? WHERE id = ?
+`
+
+type LinkResearcherEmailParams struct {
+	Email sql.NullString
+	ID    string
+}
+
+func (q *Queries) LinkResearcherEmail(ctx context.Context, arg LinkResearcherEmailParams) error {
+	_, err := q.db.ExecContext(ctx, linkResearcherEmail, arg.Email, arg.ID)
+	return err
+}
+
 const listResearchers = `-- name: ListResearchers :many
-SELECT id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at, research_interests FROM researchers ORDER BY name
+SELECT id, openalex_id, name, affiliation, h_index, works_count, cited_by_count, relevancy_threshold, last_synced_at, created_at, research_interests, email FROM researchers ORDER BY name
 `
 
 func (q *Queries) ListResearchers(ctx context.Context) ([]Researcher, error) {
@@ -134,6 +176,7 @@ func (q *Queries) ListResearchers(ctx context.Context) ([]Researcher, error) {
 			&i.LastSyncedAt,
 			&i.CreatedAt,
 			&i.ResearchInterests,
+			&i.Email,
 		); err != nil {
 			return nil, err
 		}
