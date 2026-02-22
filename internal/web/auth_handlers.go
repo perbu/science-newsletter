@@ -80,6 +80,7 @@ func (h *Handler) VerifyTokenPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	slog.Info("verify page viewed", "token_prefix", token[:8], "remote_addr", r.RemoteAddr)
 	h.renderPage(w, r, "verify_confirm.html.tmpl", map[string]any{"Token": token})
 }
 
