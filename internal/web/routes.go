@@ -6,7 +6,8 @@ func SetupRoutes(mux *http.ServeMux, h *Handler) {
 	// Auth routes (public, not behind middleware)
 	mux.HandleFunc("GET /signup", h.LoginPage)
 	mux.HandleFunc("POST /signup", h.LoginSubmit)
-	mux.HandleFunc("GET /auth/verify", h.VerifyToken)
+	mux.HandleFunc("GET /auth/verify", h.VerifyTokenPage)
+	mux.HandleFunc("POST /auth/verify", h.VerifyTokenSubmit)
 	mux.HandleFunc("POST /logout", h.Logout)
 
 	mux.HandleFunc("GET /{$}", h.Index)

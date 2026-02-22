@@ -63,8 +63,28 @@ func (h *Handler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Handler) VerifyToken(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) VerifyTokenPage(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
+	if token == "" {
+		h.renderPage(w, r, "login.html.tmpl", map[string]any{"Error": "Invalid or expired link."})
+		return
+	}
+
+	// Check that the token exists and is valid, but do NOT consume it.
+	// Email security scanners follow GET links; they'll reach this page
+	// but won't submit the form, so the token stays available for the user.
+	_, err := h.queries.GetAuthTokenByToken(r.Context(), token)
+	if err != nil {
+		slog.Debug("invalid auth token", "err", err)
+		h.renderPage(w, r, "login.html.tmpl", map[string]any{"Error": "Invalid or expired link."})
+		return
+	}
+
+	h.renderPage(w, r, "verify_confirm.html.tmpl", map[string]any{"Token": token})
+}
+
+func (h *Handler) VerifyTokenSubmit(w http.ResponseWriter, r *http.Request) {
+	token := r.FormValue("token")
 	if token == "" {
 		h.renderPage(w, r, "login.html.tmpl", map[string]any{"Error": "Invalid or expired link."})
 		return

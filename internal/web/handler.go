@@ -55,6 +55,7 @@ func NewHandler(
 		"newsletter_view.html.tmpl",
 		"login.html.tmpl",
 		"check_email.html.tmpl",
+		"verify_confirm.html.tmpl",
 		"admin_dashboard.html.tmpl",
 		"admin_newsletter_runs.html.tmpl",
 		"admin_sessions.html.tmpl",
